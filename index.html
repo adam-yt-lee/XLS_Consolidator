@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XLS Consolidator</title>
+    <link rel="icon" type="image/svg+xml" href="Logo.svg">
+    <!-- 外部CSS -->
+    <link rel="stylesheet" href="css/style.css">
+    <!-- 外部庫 -->
+    <script src="lib/xlsx.full.min.js"></script>
+    <script src="lib/FileSaver.min.js"></script>
+    <script src="lib/jszip.min.js"></script>
+    <script src="lib/papaparse.min.js"></script>
+	
+	<!-- <!-- 外部庫 --> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script> -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script> -->
+	
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-content">
+                <div class="header-logo">
+                    <img src="Logo.svg" alt="Logo" onerror="this.style.display='none'">
+                </div>
+                <h1 id="title"></h1>
+                <p id="subtitle"></p>
+            </div>
+            <div class="lang-toggle" onclick="toggleLanguageGroup()">
+                <button class="lang-btn active" id="langZH">中</button>
+                <button class="lang-btn" id="langEN">EN</button>
+            </div>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            <div id="message" class="message"></div>
+            
+            <!-- Section 1: Input -->
+            <div class="section">
+                <div class="section-title" id="inputTitle"></div>
+                
+                <div class="form-group">
+                    <label id="typeLabel"></label>
+                    <div class="btn-option-group">
+                        <button class="btn-option active" onclick="selectInputType('file')" id="optFile"></button>
+                        <button class="btn-option" onclick="selectInputType('folder')" id="optFolder"></button>
+                        <button class="btn-option" onclick="selectInputType('zip')" id="optZip"></button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label id="selectLabel"></label>
+                    <input type="file" id="xlsFileInput" accept=".xls" style="display:none;">
+                    <input type="file" id="xlsFolderInput" accept=".xls" webkitdirectory directory multiple style="display:none;">
+                    <input type="file" id="zipInput" accept=".zip" style="display:none;">
+                    <button class="btn-primary" onclick="selectInput()" id="selectBtn"></button>
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn-secondary" onclick="processData()" id="processBtn"></button>
+                </div>
+                
+                <div class="form-group">
+                    <div class="path-display empty" id="pathDisplay"></div>
+                </div>
+            </div>
+            
+            <!-- Section 2: Statistics -->
+            <div id="statsSection" class="section hidden">
+                <div class="section-title" id="statsTitle"></div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label" id="statFileCountLabel"></div>
+                        <div class="stat-value" id="statFileCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label" id="statTotalRowsLabel"></div>
+                        <div class="stat-value" id="statTotalRows">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label" id="statElapsedTimeLabel"></div>
+                        <div class="stat-value" id="statElapsedTime">0ms</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label" id="statAvgTimeLabel"></div>
+                        <div class="stat-value" id="statAvgTime">0ms</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label" id="statThroughputLabel"></div>
+                        <div class="stat-value" id="statThroughput">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p id="footerText"></p>
+        </div>
+    </div>
+    
+    <!-- 先加載bom_processor.js，再加載本頁面的JavaScript -->
+    <script src="bom_processor.js"></script>
+    <script>
+        // ##################################################################################################################################################
+        // 設定與常數區塊 (Configuration and Constants)
+        // ##################################################################################################################################################
+        
+        const CONFIG = {
+            DECODING_FORMATS: ['Big5', 'UTF-8', 'GBK', 'GB18030'], //解碼XLS檔案
+            NUMERIC_HEADERS_INCLUDE: ['usg', 'price', 'qty'],
+            NUMERIC_HEADERS_EXACT: ['lv'],
+            STRING_ID_HEADERS: ['product', 'part number', 'material'],
+            DATE_HEADER_KEYWORDS: ['date', 'version'],
+            FIXED_PATTERN: "45|43|64|X75|X66|36"
+        };
+        
+        // ##################################################################################################################################################
+        // 語言設定
+        // ##################################################################################################################################################
+        
+        let currentLanguage = 'zh-TW';
+        
+        const translations = {
+            'zh-TW': {
+                // UI标题和标签
+                title: 'XLS合併工具',
+                subtitle: '從SAP ZSDR392下載的XLS檔案\n進行自動化合併處理&新增欄位',
+                inputTitle: '📥 輸入數據',
+                typeLabel: '選擇輸入類型',
+                selectLabel: '選擇',
+                selectBtnFile: '📄 選擇檔案',
+                selectBtnFolder: '📁 選擇資料夾',
+                selectBtnZip: '📦 選擇ZIP',
+                processBtn: '⚙️ 開始處理',
+                statsTitle: '📊 處理結果統計',
+                statFileCountLabel: '檔案數量',
+                statTotalRowsLabel: '總行數',
+                statElapsedTimeLabel: '處理耗時',
+                statAvgTimeLabel: '平均檔案耗時',
+                statThroughputLabel: '吞吐量',
+                footerText: '✨ XLS合併工具 v20251219 | Adam @仁寶電腦 伺服器 #55095',
+                pathEmpty: '未選擇任何檔案',
+                
+                // 按钮标签
+                optFile: '📄 檔案',
+                optFolder: '📁 資料夾',
+                optZip: '📦 壓縮檔(.zip)',
+                
+                // 消息和反馈文本
+                selectError: '✗ 請先選擇檔案',
+                processSuccess: '✓ 數據處理成功！',
+                downloadSuccess: '✓ 檔案已下載',
+                filesSelectedMsg: '✓ 已選擇',
+                filesSelectedCount: '個檔案',
+                filesExtractedMsg: '✓ 已提取',
+                filesExtractedCount: '個檔案',
+                zipParseFailed: '✗ 解析ZIP失敗: ',
+                processFailed: '✗ 處理失敗: ',
+                
+                // 单位
+                millisUnit: 'ms',
+                rowsPerSecUnit: '行/秒',
+                
+                // 表头标签（CSV/Excel）
+                productHeader: 'Product',
+                versionHeader: 'Version'
+            },
+            'en': {
+                // UI标题和标签
+                title: 'XLS Consolidator',
+                subtitle: 'XLS files downloaded from SAP ZSDR392:\nAutomated consolidation & adding new columns',
+                inputTitle: '📥 Input Data',
+                typeLabel: 'Select Input Type',
+                selectLabel: 'Select',
+                selectBtnFile: '📄 Select File',
+                selectBtnFolder: '📁 Select Folder',
+                selectBtnZip: '📦 Select ZIP',
+                processBtn: '⚙️ Start Processing',
+                statsTitle: '📊 Processing Results',
+                statFileCountLabel: 'File Count',
+                statTotalRowsLabel: 'Total Rows',
+                statElapsedTimeLabel: 'Processing Time',
+                statAvgTimeLabel: 'Avg File Time',
+                statThroughputLabel: 'Throughput',
+                footerText: '✨ XLS Consolidator v20251219 | Adam @Compal Server #55095',
+                pathEmpty: 'No files selected',
+                
+                // 按钮标签
+                optFile: '📄 File',
+                optFolder: '📁 Folder',
+                optZip: '📦 ZIP',
+                
+                // 消息和反馈文本
+                selectError: '✗ Please select files first',
+                processSuccess: '✓ Data processing completed!',
+                downloadSuccess: '✓ File downloaded',
+                filesSelectedMsg: '✓ Selected',
+                filesSelectedCount: 'files',
+                filesExtractedMsg: '✓ Extracted',
+                filesExtractedCount: 'files',
+                zipParseFailed: '✗ ZIP parsing failed: ',
+                processFailed: '✗ Processing failed: ',
+                
+                // 单位
+                millisUnit: 'ms',
+                rowsPerSecUnit: 'rows/sec',
+                
+                // 表头标签（CSV/Excel）
+                productHeader: 'Product',
+                versionHeader: 'Version'
+            }
+        };
+        
+        let selectedInputType = 'file';
+        let selectedFiles = [];
+        let allConsolidatedData = [];
+        
+        // ##################################################################################################################################################
+        // 工具函數 Utility Functions
+        // ##################################################################################################################################################
+        
+        const parseFilename = (filename) => {
+            const match = filename.match(/([\w\d]{11})_(\d{14})/);
+            if (match) return { product: match[1], version: match[2] };
+            const [product, version] = filename.replace(/\.[^/.]+$/, '').split('_');
+            return { product: product || '', version: version?.match(/\d+/)?.[0] || '' };
+        };
+        
+        const safeToNumber = value => 
+            typeof value === 'number' ? value :
+            typeof value === 'string' ? 
+            (() => {
+                const clean = value.trim().replace(/,/g, '').replace(/(\d+)\.(\d+)\.(\d+)/, '$1$2.$3');
+                const num = parseFloat(clean);
+                return clean ? (isNaN(num) ? clean : num) : null;
+            })() : null;
+            
+        const formatProduct = product => {
+            if (/^\d+$/.test(product)) {
+                return Number(product).toString();
+            } else {
+                return product;
+            }
+        };
+        
+        const formatDate = dateString => {
+            if (!dateString || dateString.length < 8) return dateString;
+            return `${dateString.slice(0, 4)}/${parseInt(dateString.slice(4, 6))}/${parseInt(dateString.slice(6, 8))}`;
+        };
+        
+        // ##################################################################################################################################################
+        // 檔案處理函數 File Processing Functions
+        // ##################################################################################################################################################
+        
+        // 處理檔案列表 Process file list
+        const processFileList = async (files, consolidatedData) => {
+            let isFirstFile = true;
+            for (let i = 0; i < files.length; i++) {
+                const file = await (files[i].getFile ? files[i].getFile() : files[i]);
+                consolidatedData.push(...await processFile(file, isFirstFile));
+                isFirstFile = false;
+            }
+            return consolidatedData;
+        };
+        
+        // ##################################################################################################################################################
+        // 處理單個檔案 Process Single File
+        // ##################################################################################################################################################
+        
+        const processFile = async (file, isFirstFile) => {
+            try {
+                // 获取当前语言的转换字典
+                const trans = translations[currentLanguage];
+                
+                // 1. 檔案讀取與解析
+                const arrayBuffer = await file.arrayBuffer();
+                const content = new Uint8Array(arrayBuffer);
+                let decodedContent = '';
+                let successEncoding = '';
+                
+                // 優先嘗試解碼，Big5優先用於中文檔案
+                for (let encoding of CONFIG.DECODING_FORMATS) {
+                    try {
+                        const decoder = new TextDecoder(encoding, { fatal: true });
+                        decodedContent = decoder.decode(content);
+                        
+                        // 驗證解碼結果是否有效（檢查是否為空或包含太多無效字符）
+                        if (decodedContent && decodedContent.trim().length > 0) {
+                            successEncoding = encoding;
+                            console.log(`✓ Successfully decoded with ${encoding}`);
+                            break;
+                        }
+                    } catch (error) {
+                        console.log(`使用${encoding}解碼失敗: ${error.message}`);
+                        continue;
+                    }
+                }
+                
+                if (!decodedContent || decodedContent.trim().length === 0) {
+                    throw new Error('無法解碼檔案內容。Unable to decode file content.');
+                }
+                
+                const parseResult = Papa.parse(decodedContent, {
+                    header: false,
+                    skipEmptyLines: true,
+                    dynamicTyping: false
+                });
+                
+                const data = parseResult.data;
+                console.log(`檔案: ${file.name}, 編碼: ${successEncoding}, 數據行: ${data.length}`);
+                
+                if (data.length <= 1) {
+                    return isFirstFile ? [[trans.productHeader, trans.versionHeader, ...data[0]]] : [];
+                }
+                
+                // 2. 預處理區塊
+                const { product, version } = parseFilename(file.name);
+                const trimmedHeaders = data[0].map(header => header.trim());
+                const formattedProduct = formatProduct(product);
+                const formattedVersion = formatDate(version.split('.')[0]);
+                
+                // 查找關鍵欄位索引
+                const lvIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'lv');
+                const unitUsgIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'unit usg');
+                const lnIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'ln');
+                const materialIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'material');
+                const partNumberIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'part number');
+                
+                if (unitUsgIndex === -1 || lvIndex === -1) {
+                    console.error('Missing required columns: Unit Usg or LV');
+                    return [];
+                }
+                
+                // 數字和字串欄位索引
+                const numericColumnIndices = [];
+                const stringColumnIndices = [];
+                
+                trimmedHeaders.forEach((header, index) => {
+                    const h = header.toLowerCase();
+                    if (CONFIG.NUMERIC_HEADERS_INCLUDE.some(kw => h.includes(kw)) || CONFIG.NUMERIC_HEADERS_EXACT.includes(h)) {
+                        numericColumnIndices.push(index);
+                    }
+                    if (CONFIG.STRING_ID_HEADERS.includes(h)) {
+                        stringColumnIndices.push(index);
+                    }
+                });
+                
+                // 資料清洗與轉換
+                for (let i = 1; i < data.length; i++) {
+                    if (!data[i]) continue;
+                    
+                    numericColumnIndices.forEach(colIndex => {
+                        if (data[i][colIndex] != null) {
+                            data[i][colIndex] = safeToNumber(data[i][colIndex]);
+                        }
+                    });
+                    
+                    stringColumnIndices.forEach(colIndex => {
+                        if (data[i][colIndex] != null) {
+                            data[i][colIndex] = formatProduct(String(data[i][colIndex]));
+                        }
+                    });
+                }
+                
+                // 3. 主處理迴圈 - 使用BOMHierarchyProcessor
+                const dataObjects = [];
+                for (let i = 1; i < data.length; i++) {
+                    const row = data[i];
+                    const rowObj = {};
+                    
+                    trimmedHeaders.forEach((header, idx) => {
+                        rowObj[header] = row[idx];
+                    });
+                    
+                    dataObjects.push(rowObj);
+                }
+                
+                // 使用BOMHierarchyProcessor
+                let processedDataObjects = [];
+                if (dataObjects.length > 0 && typeof BOMHierarchyProcessor !== 'undefined') {
+                    try {
+                        const processor = new BOMHierarchyProcessor(dataObjects, CONFIG.FIXED_PATTERN);
+                        processedDataObjects = processor.process();
+                    } catch (error) {
+                        console.warn('BOMHierarchyProcessor error:', error);
+                        processedDataObjects = dataObjects;
+                    }
+                } else {
+                    processedDataObjects = dataObjects;
+                }
+                
+                // 轉換回陣列格式
+                const outputHeaders = [trans.productHeader, trans.versionHeader, ...trimmedHeaders];
+                
+                // 檢查是否有SYS_CPN欄位
+                const hasSysCpn = processedDataObjects.length > 0 && processedDataObjects[0]['SYS_CPN'] !== undefined;
+                const hasTtlUsage = processedDataObjects.length > 0 && processedDataObjects[0]['Ttl. Usage'] !== undefined;
+                
+                if (hasSysCpn) outputHeaders.push('SYS_CPN');
+                if (hasTtlUsage) outputHeaders.push('Ttl. Usage');
+                
+                const outputData = isFirstFile ? [outputHeaders] : [];
+                
+                for (let obj of processedDataObjects) {
+                    const outputRow = [formattedProduct, formattedVersion];
+                    
+                    trimmedHeaders.forEach(header => {
+                        outputRow.push(obj[header] !== undefined ? obj[header] : null);
+                    });
+                    
+                    if (hasSysCpn) outputRow.push(obj['SYS_CPN']);
+                    if (hasTtlUsage) outputRow.push(obj['Ttl. Usage']);
+                    
+                    outputData.push(outputRow);
+                }
+                
+                return outputData;
+                
+            } catch (error) {
+                console.error('Error processing file:', file.name, error);
+                return [];
+            }
+        };
+        
+        // ##################################################################################################################################################
+        // UI 控制函數
+        // ##################################################################################################################################################
+        
+        function toggleLanguageGroup() {
+            currentLanguage = currentLanguage === 'zh-TW' ? 'en' : 'zh-TW';
+            updateUILanguage();
+            updateLangButtons();
+        }
+        
+        function updateLangButtons() {
+            document.getElementById('langZH').classList.toggle('active', currentLanguage === 'zh-TW');
+            document.getElementById('langEN').classList.toggle('active', currentLanguage === 'en');
+        }
+        
+        function updateUILanguage() {
+            const trans = translations[currentLanguage];
+            document.documentElement.lang = currentLanguage;
+            document.getElementById('title').textContent = trans.title;
+            document.getElementById('subtitle').textContent = trans.subtitle;
+            document.getElementById('inputTitle').textContent = trans.inputTitle;
+            document.getElementById('typeLabel').textContent = trans.typeLabel;
+            document.getElementById('selectLabel').textContent = trans.selectLabel;
+            document.getElementById('processBtn').textContent = trans.processBtn;
+            document.getElementById('statsTitle').textContent = trans.statsTitle;
+            document.getElementById('statFileCountLabel').textContent = trans.statFileCountLabel;
+            document.getElementById('statTotalRowsLabel').textContent = trans.statTotalRowsLabel;
+            document.getElementById('statElapsedTimeLabel').textContent = trans.statElapsedTimeLabel;
+            document.getElementById('statAvgTimeLabel').textContent = trans.statAvgTimeLabel;
+            document.getElementById('statThroughputLabel').textContent = trans.statThroughputLabel;
+            document.getElementById('footerText').textContent = trans.footerText;
+            
+            // Update option buttons
+            document.getElementById('optFile').textContent = trans.optFile;
+            document.getElementById('optFolder').textContent = trans.optFolder;
+            document.getElementById('optZip').textContent = trans.optZip;
+            
+            updateSelectButtonText();
+            
+            if (selectedFiles.length === 0) {
+                document.getElementById('pathDisplay').textContent = trans.pathEmpty;
+            }
+        }
+        
+        function updateSelectButtonText() {
+            const trans = translations[currentLanguage];
+            const btn = document.getElementById('selectBtn');
+            
+            if (selectedInputType === 'file') {
+                btn.textContent = trans.selectBtnFile;
+            } else if (selectedInputType === 'folder') {
+                btn.textContent = trans.selectBtnFolder;
+            } else if (selectedInputType === 'zip') {
+                btn.textContent = trans.selectBtnZip;
+            }
+        }
+        
+        function selectInputType(type) {
+            selectedInputType = type;
+            
+            document.querySelectorAll('.btn-option').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            updateSelectButtonText();
+        }
+        
+        function selectInput() {
+            if (selectedInputType === 'file') {
+                document.getElementById('xlsFileInput').click();
+            } else if (selectedInputType === 'folder') {
+                document.getElementById('xlsFolderInput').click();
+            } else if (selectedInputType === 'zip') {
+                document.getElementById('zipInput').click();
+            }
+        }
+        
+        function updatePathDisplay(files) {
+            const pathDisplay = document.getElementById('pathDisplay');
+            
+            if (files.length === 0) {
+                pathDisplay.textContent = translations[currentLanguage].pathEmpty;
+                pathDisplay.classList.add('empty');
+                return;
+            }
+            
+            pathDisplay.classList.remove('empty');
+            
+            if (files.length === 1) {
+                pathDisplay.textContent = files[0].name;
+            } else {
+                const names = files.map(f => f.name).join(', ');
+                pathDisplay.textContent = `${files.length} files: ${names}`;
+            }
+        }
+        
+        document.getElementById('xlsFileInput').addEventListener('change', function(event) {
+            selectedFiles = Array.from(event.target.files);
+            updatePathDisplay(selectedFiles);
+            showMessage(`${translations[currentLanguage].filesSelectedMsg} ${selectedFiles.length} ${translations[currentLanguage].filesSelectedCount}`, 'success');
+        });
+        
+        document.getElementById('xlsFolderInput').addEventListener('change', function(event) {
+            const files = Array.from(event.target.files).filter(f => 
+                f.name.toLowerCase().endsWith('.xls') && !f.name.toLowerCase().endsWith('.xlsx')
+            );
+            selectedFiles = files;
+            updatePathDisplay(selectedFiles);
+            showMessage(`${translations[currentLanguage].filesSelectedMsg} ${files.length} ${translations[currentLanguage].filesSelectedCount}`, 'success');
+        });
+        
+        document.getElementById('zipInput').addEventListener('change', async function(event) {
+            try {
+                const zipFile = event.target.files[0];
+                const zip = new JSZip();
+                const contents = await zip.loadAsync(zipFile);
+                const xlsFiles = [];
+                
+                // 遍歷ZIP中的所有文件，包括子目錄
+                for (const fileName in contents.files) {
+                    if (fileName.toLowerCase().endsWith('.xls') && !fileName.toLowerCase().endsWith('.xlsx')) {
+                        const fileData = await contents.files[fileName].async("arraybuffer");
+                        xlsFiles.push(new File([fileData], fileName));
+                    }
+                }
+                
+                selectedFiles = xlsFiles;
+                updatePathDisplay(xlsFiles);
+                showMessage(`${translations[currentLanguage].filesExtractedMsg} ${xlsFiles.length} ${translations[currentLanguage].filesExtractedCount}`, 'success');
+            } catch (error) {
+                showMessage(`${translations[currentLanguage].zipParseFailed}${error.message}`, 'error');
+                console.error('ZIP processing error:', error);
+            }
+        });
+        
+        function showMessage(message, type = 'info') {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = message;
+            messageEl.className = `message ${type}`;
+            
+            if (type !== 'error') {
+                setTimeout(() => {
+                    messageEl.className = 'message';
+                }, 3000);
+            }
+        }
+        
+        async function processData() {
+            if (selectedFiles.length === 0) {
+                showMessage(translations[currentLanguage].selectError, 'error');
+                return;
+            }
+            
+            try {
+                const startTime = performance.now();
+                allConsolidatedData = [];
+                const processedFileCount = selectedFiles.length;
+                
+                // 使用統一的processFileList處理檔案列表
+                allConsolidatedData = await processFileList(selectedFiles, []);
+                
+                const elapsedTime = performance.now() - startTime;
+                
+                // 顯示統計
+                const totalRows = allConsolidatedData.length > 1 ? allConsolidatedData.length - 1 : 0;
+                displayStatistics(processedFileCount, totalRows, elapsedTime);
+                
+                // 下載結果
+                downloadResults(allConsolidatedData);
+                
+                showMessage(translations[currentLanguage].processSuccess, 'success');
+                
+            } catch (error) {
+                showMessage(`${translations[currentLanguage].processFailed}${error.message}`, 'error');
+                console.error('Process error:', error);
+            }
+        }
+        
+        function displayStatistics(fileCount, totalRows, elapsedTime) {
+            const throughput = totalRows > 0 ? (totalRows / (elapsedTime / 1000)).toFixed(0) : 0;
+            const avgFileTime = fileCount > 0 ? (elapsedTime / fileCount).toFixed(0) : 0;
+            const trans = translations[currentLanguage];
+            const throughputUnit = ' ' + trans.rowsPerSecUnit;
+            const millisUnit = trans.millisUnit;
+            
+            document.getElementById('statFileCount').textContent = fileCount.toLocaleString();
+            document.getElementById('statTotalRows').textContent = totalRows.toLocaleString();
+            document.getElementById('statElapsedTime').textContent = elapsedTime.toFixed(0) + millisUnit;
+            document.getElementById('statAvgTime').textContent = avgFileTime + millisUnit;
+            document.getElementById('statThroughput').textContent = throughput.toLocaleString() + throughputUnit;
+            
+            document.getElementById('statsSection').classList.remove('hidden');
+        }
+        
+        function downloadResults(data) {
+            try {
+                const timestamp = new Date().toLocaleString('sv-SE').replace(' ', '.').replace(/[-:]/g, '');
+                const fileName = `${timestamp}_consolidated_data.xlsx`;
+                
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'BOM Data');
+                XLSX.writeFile(wb, fileName);
+                
+                showMessage(translations[currentLanguage].downloadSuccess, 'success');
+                
+            } catch (error) {
+                console.error('Download error:', error);
+            }
+        }
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            updateUILanguage();
+            console.log('BOM Processor Ready - BOMHierarchyProcessor:', typeof BOMHierarchyProcessor);
+        });
+    </script>
+</body>
+</html>
