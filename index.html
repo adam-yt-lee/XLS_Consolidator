@@ -118,7 +118,11 @@
             NUMERIC_HEADERS_EXACT: ['lv'],
             STRING_ID_HEADERS: ['product', 'part number', 'material'],
             DATE_HEADER_KEYWORDS: ['date', 'version'],
-            FIXED_PATTERN: "45|43|64|X75|X66|36|DCS2|HG"
+            FIXED_PATTERN: "45|43|64|X75|X66|36",
+            
+            // v2.4.0：特殊LV規則配置（operator 固定為 <=）
+            // {lv: 2, prefix: 'DCS'} 表示 LV <= 2 返回自身，LV > 2 向上尋找
+            SPECIAL_LV_RULES: [{lv: 2, prefix: 'DCS'},{lv: 2, prefix: 'HG'}]
         };
         
         // ##################################################################################################################################################
@@ -386,7 +390,11 @@
                 let processedDataObjects = [];
                 if (dataObjects.length > 0 && typeof BOMHierarchyProcessor !== 'undefined') {
                     try {
-                        const processor = new BOMHierarchyProcessor(dataObjects, CONFIG.FIXED_PATTERN);
+                        const processor = new BOMHierarchyProcessor(
+                            dataObjects,
+                            CONFIG.FIXED_PATTERN,
+                            CONFIG.SPECIAL_LV_RULES
+                        );
                         processedDataObjects = processor.process();
                     } catch (error) {
                         console.warn('BOMHierarchyProcessor error:', error);

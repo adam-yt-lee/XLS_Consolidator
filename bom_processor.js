@@ -1,18 +1,41 @@
 /**
- * BOM層級處理器 - JavaScript版本
- * 使用統一遞迴在一次遍歷中同時計算SYS_CPN和Ttl. Usage
+ * BOM層級處理器
+ * 版本：v2.4.0 (2025-01-23)
+ * 功能：
+ *   - 支持簡化的LV限制規則 {lv: 2, prefix: 'DCS'}
+ *   - operator 固定為 <= (自動)
+ *   - 支持單個或多個特殊LV規則
+ *   - 自動TTL使用量計算
+ *   - Material層級索引和快速查詢
+ * 
+ * 更新記錄：
+ *   v2.4.0 (2025-01-23) - 簡化設計：移除 operator 參數，固定為 <=
+ *   v2.3.0 (2025-01-23) - 支持 operator 操作符設計
+ *   v2.2.0 (2025-01-23) - 支持LV範圍限制（minLv/maxLv）
+ *   v2.1.0 (2025-01-23) - 支持多規則、完整註記版本
+ *   v2.0.0 (2025-01-22) - 初始實現特殊LV規則
+ *   v1.0.0 (2024-12-22) - 基礎功能
  */
 
 class BOMHierarchyProcessor {
     /**
      * BOM層級處理器
      * 
-     * @param {Array<Object>} data - BOM數據，包含LV、LN、Material、Part Number、Unit Usg等欄位
+     * @param {Array<Object>} data - BOM數據
      * @param {string} pattern - 符合條件的Material前綴，如"45|43|64|X75|X66"
+     * @param {Object|Array|null} lvSpecialRules - 特殊LV層級規則
+     *        - null: 無特殊規則
+     *        - {lv: 2, prefix: 'DCS'}: LV <= 2 返回自身，LV > 2 向上尋找
+     *        - [{lv: 2, prefix: 'DCS'}, {lv: 3, prefix: 'XYZ'}]: 多個規則
+     * 
+     * 行為（固定 operator 為 <=）：
+     *   LV <= 規則中的 lv 值 → 返回自身
+     *   LV > 規則中的 lv 值 → 向上尋找
      */
-    constructor(data, pattern) {
+    constructor(data, pattern, lvSpecialRules = null) {
         this.data = JSON.parse(JSON.stringify(data)); // 深拷貝
         this.pattern = pattern;
+        this.lvSpecialRules = lvSpecialRules;
         
         // 編譯正則表達式
         try {
@@ -72,6 +95,18 @@ class BOMHierarchyProcessor {
         console.log(`  - 總行數：${this.data.length}`);
         console.log(`  - Material索引數：${this.materialIndex.size}`);
         console.log(`  - 搜尋Pattern：${this.pattern}`);
+        
+        if (this.lvSpecialRules) {
+            if (Array.isArray(this.lvSpecialRules)) {
+                console.log(`  - 特殊規則數：${this.lvSpecialRules.length}`);
+                this.lvSpecialRules.forEach((rule, idx) => {
+                    console.log(`    └─ 規則${idx + 1}：LV <= ${rule.lv} 且 前綴='${rule.prefix}' (返回自身)`);
+                });
+            } else {
+                console.log(`  - 特殊規則：LV <= ${this.lvSpecialRules.lv} 且 前綴='${this.lvSpecialRules.prefix}' (返回自身)`);
+            }
+        }
+        
         console.log(`  - Product數量：${uniqueProducts}`);
     }
     
@@ -88,28 +123,70 @@ class BOMHierarchyProcessor {
     }
     
     /**
+     * 檢查Material是否以指定前綴開頭
+     * @param {string} material
+     * @param {string} prefix
+     * @returns {boolean}
+     * @private
+     */
+    _startsWith(material, prefix) {
+        return String(material || '').trim().startsWith(prefix);
+    }
+    
+    /**
+     * 檢查是否符合特殊LV規則（返回自身）
+     * 
+     * 配置方式：
+     * {lv: 2, prefix: 'DCS'}
+     *   - LV <= 2 時返回自身
+     *   - LV > 2 時向上尋找
+     * 
+     * @param {number} lv
+     * @param {string} material
+     * @returns {boolean}
+     * @private
+     */
+    _matchesLVSpecialRule(lv, material) {
+        if (!this.lvSpecialRules) {
+            return false;
+        }
+        
+        // 如果是陣列，檢查是否符合任一規則
+        if (Array.isArray(this.lvSpecialRules)) {
+            return this.lvSpecialRules.some(rule =>
+                this._checkSingleRule(lv, material, rule)
+            );
+        }
+        
+        // 單個物件
+        return this._checkSingleRule(lv, material, this.lvSpecialRules);
+    }
+    
+    /**
+     * 檢查單個規則是否匹配（返回自身）
+     * 固定 operator 為 <=
+     * @private
+     */
+    _checkSingleRule(lv, material, rule) {
+        // 檢查前綴
+        if (!this._startsWith(material, rule.prefix)) {
+            return false;
+        }
+        
+        // 固定使用 <= 判斷
+        return lv <= rule.lv;
+    }
+    
+    /**
      * 統一的層級遞迴遍歷函數
-     * 
-     * 邏輯：
-     * 1. 從start_material開始，遞迴向上查詢Parent
-     * 2. SYS_CPN：遇到第一個符合Pattern的Material則跳出
-     * 3. Ttl. Usage：繼續遞迴到LV=0，累乘所有Parent的Unit Usg
-     * 
-     * @param {string} startMaterial - 起始Material
-     * @param {number} initialUsage - 初始Unit Usg（用於累乘）
-     * @param {number} depth - 遞迴深度
-     * @param {number} maxDepth - 最大深度限制
-     * @returns {[string, number]} [sys_cpn, ttl_usage]
      * @private
      */
     _traverseHierarchyUnified(startMaterial, initialUsage = 1.0, depth = 0, maxDepth = 20) {
-        // 防止無限迴圈
         if (depth > maxDepth) {
             return [startMaterial, initialUsage];
         }
         
         try {
-            // 找到當前Material對應的Row
             const currentIdx = this.materialIndex.get(startMaterial);
             if (currentIdx === undefined) {
                 return [startMaterial, initialUsage];
@@ -118,7 +195,6 @@ class BOMHierarchyProcessor {
             const currentRow = this.data[currentIdx];
             const currentLV = currentRow.LV || -1;
             
-            // 防止循環訪問
             if (this.visited.has(startMaterial)) {
                 return [startMaterial, initialUsage];
             }
@@ -126,26 +202,21 @@ class BOMHierarchyProcessor {
             this.visited.add(startMaterial);
             
             try {
-                // 取得Parent的Part Number
                 const parentPartNumber = currentRow['Part Number'] || '';
                 
-                // 檢查是否已到達LV=0（頂層）
                 if (currentLV <= 0 || !parentPartNumber || parentPartNumber === '') {
                     return [startMaterial, initialUsage];
                 }
                 
-                // 找到Parent
                 const parentMaterial = String(parentPartNumber).trim();
                 const parentIdx = this.materialIndex.get(parentMaterial);
                 
                 if (parentIdx === undefined) {
-                    // Parent不在數據中，視為到達頂層
                     return [startMaterial, initialUsage];
                 }
                 
                 const parentRow = this.data[parentIdx];
                 
-                // 提取Parent的Unit Usg
                 let parentUnitUsg = parentRow['Unit Usg'] || 1.0;
                 if (isNaN(parentUnitUsg)) {
                     parentUnitUsg = 1.0;
@@ -153,13 +224,9 @@ class BOMHierarchyProcessor {
                     parentUnitUsg = parseFloat(parentUnitUsg);
                 }
                 
-                // 累乘Usage
                 const newUsage = initialUsage * parentUnitUsg;
                 
-                // 檢查Parent是否符合Pattern
                 if (this.matchesPattern(parentRow.Material)) {
-                    // 找到符合Pattern的Parent，SYS_CPN返回此Parent
-                    // 但Ttl. Usage繼續累乘到LV=0
                     const [_, finalTtlUsage] = this._traverseHierarchyUnified(
                         parentMaterial,
                         newUsage,
@@ -169,7 +236,6 @@ class BOMHierarchyProcessor {
                     return [parentRow.Material, finalTtlUsage];
                 }
                 
-                // Parent不符合Pattern，繼續向上遞迴
                 const [parentSysCpn, parentTtlUsage] = this._traverseHierarchyUnified(
                     parentMaterial,
                     newUsage,
@@ -189,8 +255,7 @@ class BOMHierarchyProcessor {
     
     /**
      * 處理所有行，返回添加了SYS_CPN和Ttl. Usage欄位的數據
-     * 
-     * @returns {Array<Object>} 處理後的數據
+     * @returns {Array<Object>}
      */
     process() {
         console.log(`\n開始處理 ${this.data.length} 行數據...`);
@@ -203,7 +268,6 @@ class BOMHierarchyProcessor {
             const currentMaterial = String(row.Material || '');
             const currentLV = row.LV;
             
-            // 取得當前行的Unit Usg
             let unitUsg = row['Unit Usg'] || 1.0;
             if (isNaN(unitUsg)) {
                 unitUsg = 1.0;
@@ -211,10 +275,24 @@ class BOMHierarchyProcessor {
                 unitUsg = parseFloat(unitUsg);
             }
             
-            // 步驟1：LV檢查
+            // 步驟1：LV檢查（頂層）
             if (currentLV <= 1) {
                 sysCpnResults.push(currentMaterial);
                 ttlUsageResults.push(unitUsg);
+                continue;
+            }
+            
+            // 步驟1.5：特殊LV規則檢查（支持單個或多個規則）
+            if (this._matchesLVSpecialRule(currentLV, currentMaterial)) {
+                sysCpnResults.push(currentMaterial);
+                
+                // 計算Ttl. Usage（向上累乘至LV=0）
+                this.visited.clear();
+                const [_, ttlUsage] = this._traverseHierarchyUnified(
+                    currentMaterial,
+                    unitUsg
+                );
+                ttlUsageResults.push(ttlUsage);
                 continue;
             }
             
@@ -236,24 +314,18 @@ class BOMHierarchyProcessor {
             const currentPartNumber = row['Part Number'] || '';
             
             if (!currentPartNumber || currentPartNumber === '') {
-                // 沒有Part Number，無法向上查詢
                 sysCpnResults.push(currentMaterial);
                 ttlUsageResults.push(unitUsg);
                 continue;
             }
             
-            // 清空本次查詢的訪問記錄
             this.visited.clear();
             
-            // 檢查Part Number對應的Material
             const parentMaterialStr = String(currentPartNumber).trim();
             
-            // 先檢查Part Number本身是否符合Pattern
             if (this.matchesPattern(parentMaterialStr)) {
-                // Part Number本身就符合Pattern
                 sysCpnResults.push(parentMaterialStr);
                 
-                // 計算Ttl. Usage
                 this.visited.clear();
                 const [_, ttlUsage] = this._traverseHierarchyUnified(
                     parentMaterialStr,
@@ -261,7 +333,6 @@ class BOMHierarchyProcessor {
                 );
                 ttlUsageResults.push(ttlUsage);
             } else {
-                // Part Number不符合Pattern，向上遞迴查詢
                 const [sysCpn, ttlUsage] = this._traverseHierarchyUnified(
                     parentMaterialStr,
                     unitUsg
@@ -315,77 +386,12 @@ class BOMHierarchyProcessor {
     
     /**
      * 獲取指定行數的樣本數據
-     * @param {number} limit - 行數限制
+     * @param {number} limit
      * @returns {Array<Object>}
      */
     getSamples(limit = 20) {
-        // 取LV>1且Material != SYS_CPN的行
         return this.data
             .filter(row => row.LV > 1 && row.Material !== row.SYS_CPN)
             .slice(0, limit);
     }
-}
-
-/**
- * 工具函數：將CSV字符串解析為數組
- * @param {string} csvContent - CSV內容
- * @returns {Array<Object>}
- */
-function parseCSV(csvContent) {
-    const lines = csvContent.trim().split('\n');
-    if (lines.length < 2) return [];
-    
-    // 解析header
-    const headers = lines[0].split(',').map(h => h.trim());
-    
-    // 解析行
-    const data = [];
-    for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        const row = {};
-        
-        headers.forEach((header, idx) => {
-            const value = values[idx] || '';
-            // 嘗試轉換為數字
-            row[header] = isNaN(value) ? value : parseFloat(value);
-        });
-        
-        data.push(row);
-    }
-    
-    return data;
-}
-
-/**
- * 工具函數：將數據轉換為CSV字符串
- * @param {Array<Object>} data - 數據數組
- * @returns {string}
- */
-function dataToCSV(data) {
-    if (data.length === 0) return '';
-    
-    // 獲取所有key
-    const headers = Object.keys(data[0]);
-    
-    // 構建CSV
-    let csv = headers.join(',') + '\n';
-    
-    for (const row of data) {
-        const values = headers.map(header => {
-            const value = row[header];
-            // 如果值包含逗號或換行，需要用引號包裹
-            if (typeof value === 'string' && (value.includes(',') || value.includes('\n'))) {
-                return `"${value.replace(/"/g, '""')}"`;
-            }
-            return value === undefined ? '' : value;
-        });
-        csv += values.join(',') + '\n';
-    }
-    
-    return csv;
-}
-
-// 導出供外部使用
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { BOMHierarchyProcessor, parseCSV, dataToCSV };
 }
