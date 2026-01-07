@@ -1,14 +1,16 @@
 /**
  * BOM層級處理器
- * 版本：v2.4.0 (2025-01-23)
+ * 版本：v2.5.0 (2025-01-23)
  * 功能：
  *   - 支持簡化的LV限制規則 {lv: 2, prefix: 'DCS'}
  *   - operator 固定為 <= (自動)
  *   - 支持單個或多個特殊LV規則
  *   - 自動TTL使用量計算
  *   - Material層級索引和快速查詢
- * 
+ *   - LN 自動重新編號（修正原始檔案錯誤）
+ *
  * 更新記錄：
+ *   v2.5.0 (2025-01-23) - 新增 LN 自動重新編號功能
  *   v2.4.0 (2025-01-23) - 簡化設計：移除 operator 參數，固定為 <=
  *   v2.3.0 (2025-01-23) - 支持 operator 操作符設計
  *   v2.2.0 (2025-01-23) - 支持LV範圍限制（minLv/maxLv）
@@ -36,7 +38,10 @@ class BOMHierarchyProcessor {
         this.data = JSON.parse(JSON.stringify(data)); // 深拷貝
         this.pattern = pattern;
         this.lvSpecialRules = lvSpecialRules;
-        
+
+        // 重新編號 LN（修正原始檔案的錯誤編號）
+        this._reindexLN();
+
         // 編譯正則表達式
         try {
             this.materialPattern = new RegExp(`^(${pattern})`);
@@ -44,19 +49,37 @@ class BOMHierarchyProcessor {
             console.error('Invalid pattern:', pattern);
             this.materialPattern = /^$/;
         }
-        
+
         // 初始化Material索引
         this.materialIndex = new Map();
         this.cache = new Map();
         this.visited = new Set();
-        
+
         // 構建Material索引
         this._buildMaterialIndex();
-        
+
         // 統計信息
         this._printStats();
     }
     
+    /**
+     * 重新編號 LN 列
+     * 修正原始檔案中可能存在的錯誤編號，從 1 開始順序編號
+     * @private
+     */
+    _reindexLN() {
+        if (this.data.length === 0) {
+            return;
+        }
+
+        let sequence = 1;
+        for (let i = 0; i < this.data.length; i++) {
+            this.data[i].LN = sequence++;
+        }
+
+        console.log(`✓ LN 重新編號完成：1-${sequence - 1}`);
+    }
+
     /**
      * 構建Material索引
      * 如果同一Material有多行，保留LN最大的（最接近末端的）
