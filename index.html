@@ -112,48 +112,147 @@
         // ##################################################################################################################################################
         // 設定與常數區塊 (Configuration and Constants)
         // ##################################################################################################################################################
-        
+
+        /**
+         * 應用程式配置物件
+         * Application configuration object
+         */
         const CONFIG = {
-            DECODING_FORMATS: ['Big5', 'UTF-8', 'GBK', 'GB18030'], //解碼XLS檔案
+            /**
+             * 檔案解碼格式列表（按優先順序）
+             * File decoding formats list (in priority order)
+             * Big5 優先用於處理傳統繁體中文 XLS 檔案
+             */
+            DECODING_FORMATS: ['Big5', 'UTF-8', 'GBK', 'GB18030'],
+
+            /**
+             * 需要轉換為數字的欄位關鍵字（部分匹配）
+             * Header keywords for numeric conversion (partial match)
+             * 欄位名稱包含這些關鍵字將被轉換為數字
+             */
             NUMERIC_HEADERS_INCLUDE: ['usg', 'price', 'qty'],
+
+            /**
+             * 需要轉換為數字的欄位名稱（完全匹配）
+             * Header names for numeric conversion (exact match)
+             */
             NUMERIC_HEADERS_EXACT: ['lv'],
+
+            /**
+             * 需要格式化為字串 ID 的欄位
+             * Headers to format as string IDs
+             * 這些欄位的數字會去除前導零
+             */
             STRING_ID_HEADERS: ['product', 'part number', 'material'],
+
+            /**
+             * 日期欄位的關鍵字
+             * Date header keywords
+             * 目前用於識別版本和日期欄位
+             */
             DATE_HEADER_KEYWORDS: ['date', 'version'],
+
+            /**
+             * 固定模式匹配規則
+             * Fixed pattern matching rule
+             * 用於 BOM 層次結構處理器識別特定元件
+             */
             FIXED_PATTERN: "45|43|64|X75|X66|36",
-            
-            // v2.4.0：特殊LV規則配置（operator 固定為 <=）
-            // {lv: 2, prefix: 'DCS'} 表示 LV <= 2 返回自身，LV > 2 向上尋找
-            SPECIAL_LV_RULES: [{lv: 2, prefix: 'DCS'},{lv: 2, prefix: 'HG'}]
+
+            /**
+             * 特殊 LV 規則配置（v2.4.0）
+             * Special LV rules configuration (v2.4.0)
+             *
+             * 格式 (Format): {lv: number, prefix: string}
+             * - lv: 層級閾值
+             * - prefix: 元件前綴
+             *
+             * 規則說明 (Rule description):
+             * - 當元件前綴匹配且 LV <= 設定值時，返回自身
+             * - 當元件前綴匹配且 LV > 設定值時，向上尋找父層
+             * - operator 固定為 <=
+             *
+             * 範例 (Example):
+             * {lv: 2, prefix: 'DCS'} 表示：
+             * - LV 1-2 的 DCS 元件返回自身
+             * - LV 3+ 的 DCS 元件向上尋找
+             */
+            SPECIAL_LV_RULES: [
+                {lv: 2, prefix: 'DCS'},
+                {lv: 2, prefix: 'HG'}
+            ]
         };
 
         // ##################################################################################################################################################
-        // 語言設定（已移至 i18n.js）
+        // 語言設定 (Language Settings)
+        // ##################################################################################################################################################
+        // 注意：語言翻譯已移至 i18n.js
+        // Note: Language translations have been moved to i18n.js
+
+        // ##################################################################################################################################################
+        // 全域變數 (Global Variables)
         // ##################################################################################################################################################
 
-        let selectedInputType = 'file';
-        let selectedFiles = [];
-        let allConsolidatedData = [];
+        let selectedInputType = 'file';    // 當前選擇的輸入類型：'file' | 'folder' | 'zip'
+        let selectedFiles = [];             // 已選擇的檔案列表
+        let allConsolidatedData = [];       // 所有合併後的資料
         
         // ##################################################################################################################################################
-        // 工具函數 Utility Functions
+        // 工具函數區塊 (Utility Functions)
         // ##################################################################################################################################################
-        
+
+        /**
+         * 解析檔案名稱，提取產品代碼和版本號
+         * Parse filename to extract product code and version number
+         *
+         * @param {string} filename - 檔案名稱
+         * @returns {Object} {product: string, version: string}
+         *
+         * 支援格式 (Supported formats):
+         * - 標準格式: PRODUCT_ID_YYYYMMDDHHMMSS.xls (11字元產品ID + 14位時間戳)
+         * - 簡化格式: PRODUCT_VERSION.xls
+         */
         const parseFilename = (filename) => {
+            // 嘗試匹配標準格式：11字元產品ID + 14位時間戳
             const match = filename.match(/([\w\d]{11})_(\d{14})/);
             if (match) return { product: match[1], version: match[2] };
+
+            // 簡化格式：移除副檔名後用底線分割
             const [product, version] = filename.replace(/\.[^/.]+$/, '').split('_');
             return { product: product || '', version: version?.match(/\d+/)?.[0] || '' };
         };
-        
-        const safeToNumber = value => 
+
+        /**
+         * 安全地將值轉換為數字
+         * Safely convert value to number
+         *
+         * @param {*} value - 要轉換的值
+         * @returns {number|string|null} 轉換後的數字、原字串或null
+         *
+         * 處理邏輯 (Processing logic):
+         * 1. 已是數字 → 直接返回
+         * 2. 字串 → 清除千分位逗號、處理多餘小數點後轉換
+         * 3. 其他 → 返回null
+         */
+        const safeToNumber = value =>
             typeof value === 'number' ? value :
-            typeof value === 'string' ? 
+            typeof value === 'string' ?
             (() => {
+                // 清除空白、千分位逗號，並處理錯誤的多重小數點（如 1.234.56 → 1234.56）
                 const clean = value.trim().replace(/,/g, '').replace(/(\d+)\.(\d+)\.(\d+)/, '$1$2.$3');
                 const num = parseFloat(clean);
                 return clean ? (isNaN(num) ? clean : num) : null;
             })() : null;
-            
+
+        /**
+         * 格式化產品代碼
+         * Format product code
+         *
+         * @param {string|number} product - 產品代碼
+         * @returns {string} 格式化後的產品代碼
+         *
+         * 純數字產品代碼會去除前導零 (Remove leading zeros from numeric product codes)
+         */
         const formatProduct = product => {
             if (/^\d+$/.test(product)) {
                 return Number(product).toString();
@@ -161,17 +260,231 @@
                 return product;
             }
         };
-        
+
+        /**
+         * 格式化日期字串
+         * Format date string
+         *
+         * @param {string} dateString - YYYYMMDD 格式的日期字串
+         * @returns {string} YYYY/M/D 格式的日期（月和日去除前導零）
+         */
         const formatDate = dateString => {
             if (!dateString || dateString.length < 8) return dateString;
             return `${dateString.slice(0, 4)}/${parseInt(dateString.slice(4, 6))}/${parseInt(dateString.slice(6, 8))}`;
         };
         
         // ##################################################################################################################################################
-        // 檔案處理函數 File Processing Functions
+        // 檔案處理函數區塊 (File Processing Functions)
         // ##################################################################################################################################################
-        
-        // 處理檔案列表 Process file list
+
+        /**
+         * 解碼檔案內容為文字
+         * Decode file content to text
+         *
+         * @param {ArrayBuffer} arrayBuffer - 檔案的二進位內容
+         * @returns {Object} {decodedContent: string, encoding: string} 解碼後的內容和使用的編碼
+         * @throws {Error} 當所有編碼格式都無法解碼時拋出錯誤
+         *
+         * 編碼嘗試順序 (Encoding attempt order):
+         * Big5 → UTF-8 → GBK → GB18030
+         * Big5 優先用於處理傳統中文XLS檔案
+         */
+        const decodeFileContent = (arrayBuffer) => {
+            const content = new Uint8Array(arrayBuffer);
+            let decodedContent = '';
+            let successEncoding = '';
+
+            // 依序嘗試不同編碼格式解碼
+            for (let encoding of CONFIG.DECODING_FORMATS) {
+                try {
+                    const decoder = new TextDecoder(encoding, { fatal: true });
+                    decodedContent = decoder.decode(content);
+
+                    // 驗證解碼結果是否有效（檢查是否為空或包含太多無效字符）
+                    if (decodedContent && decodedContent.trim().length > 0) {
+                        successEncoding = encoding;
+                        console.log(`✓ Successfully decoded with ${encoding}`);
+                        break;
+                    }
+                } catch (error) {
+                    console.log(`使用${encoding}解碼失敗: ${error.message}`);
+                    continue;
+                }
+            }
+
+            if (!decodedContent || decodedContent.trim().length === 0) {
+                throw new Error('無法解碼檔案內容。Unable to decode file content.');
+            }
+
+            return { decodedContent, encoding: successEncoding };
+        };
+
+        /**
+         * 查找資料欄位索引
+         * Find column indices for data processing
+         *
+         * @param {Array<string>} headers - 標題列陣列
+         * @returns {Object} 包含各種欄位索引的物件
+         *
+         * 返回欄位 (Returned fields):
+         * - lvIndex: LV欄位索引（必要）
+         * - unitUsgIndex: Unit Usg欄位索引（必要）
+         * - lnIndex: LN欄位索引
+         * - materialIndex: Material欄位索引
+         * - partNumberIndex: Part Number欄位索引
+         * - numericColumnIndices: 所有數字欄位索引陣列
+         * - stringColumnIndices: 所有字串ID欄位索引陣列
+         */
+        const findColumnIndices = (headers) => {
+            const trimmedHeaders = headers.map(h => h.trim());
+
+            // 查找必要欄位索引
+            const lvIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'lv');
+            const unitUsgIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'unit usg');
+            const lnIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'ln');
+            const materialIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'material');
+            const partNumberIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'part number');
+
+            // 查找數字和字串欄位索引
+            const numericColumnIndices = [];
+            const stringColumnIndices = [];
+
+            trimmedHeaders.forEach((header, index) => {
+                const h = header.toLowerCase();
+
+                // 判斷是否為數字欄位
+                if (CONFIG.NUMERIC_HEADERS_INCLUDE.some(kw => h.includes(kw)) ||
+                    CONFIG.NUMERIC_HEADERS_EXACT.includes(h)) {
+                    numericColumnIndices.push(index);
+                }
+
+                // 判斷是否為字串ID欄位
+                if (CONFIG.STRING_ID_HEADERS.includes(h)) {
+                    stringColumnIndices.push(index);
+                }
+            });
+
+            return {
+                lvIndex,
+                unitUsgIndex,
+                lnIndex,
+                materialIndex,
+                partNumberIndex,
+                numericColumnIndices,
+                stringColumnIndices,
+                trimmedHeaders
+            };
+        };
+
+        /**
+         * 清洗和轉換資料行
+         * Clean and transform data rows
+         *
+         * @param {Array<Array>} data - 原始資料陣列（含標題列）
+         * @param {Array<number>} numericIndices - 數字欄位索引陣列
+         * @param {Array<number>} stringIndices - 字串欄位索引陣列
+         *
+         * 處理內容 (Processing):
+         * - 數字欄位：轉換為數字類型，處理千分位和異常格式
+         * - 字串欄位：格式化產品代碼，去除前導零
+         */
+        const cleanDataRows = (data, numericIndices, stringIndices) => {
+            // 從索引1開始，跳過標題列
+            for (let i = 1; i < data.length; i++) {
+                if (!data[i]) continue;
+
+                // 清洗數字欄位
+                numericIndices.forEach(colIndex => {
+                    if (data[i][colIndex] != null) {
+                        data[i][colIndex] = safeToNumber(data[i][colIndex]);
+                    }
+                });
+
+                // 格式化字串欄位
+                stringIndices.forEach(colIndex => {
+                    if (data[i][colIndex] != null) {
+                        data[i][colIndex] = formatProduct(String(data[i][colIndex]));
+                    }
+                });
+            }
+        };
+
+        /**
+         * 將資料陣列轉換為物件陣列
+         * Convert data array to array of objects
+         *
+         * @param {Array<Array>} data - 資料陣列（含標題列）
+         * @param {Array<string>} headers - 標題列
+         * @returns {Array<Object>} 物件陣列，每個物件代表一行資料
+         */
+        const convertToDataObjects = (data, headers) => {
+            const dataObjects = [];
+
+            // 從索引1開始，跳過標題列
+            for (let i = 1; i < data.length; i++) {
+                const row = data[i];
+                const rowObj = {};
+
+                headers.forEach((header, idx) => {
+                    rowObj[header] = row[idx];
+                });
+
+                dataObjects.push(rowObj);
+            }
+
+            return dataObjects;
+        };
+
+        /**
+         * 格式化輸出資料
+         * Format output data
+         *
+         * @param {Array<Object>} processedData - 處理後的資料物件陣列
+         * @param {Array<string>} headers - 原始標題列
+         * @param {string} product - 產品代碼
+         * @param {string} version - 版本號
+         * @param {boolean} isFirstFile - 是否為第一個檔案（決定是否包含標題列）
+         * @returns {Array<Array>} 格式化後的輸出資料陣列
+         */
+        const formatOutputData = (processedData, headers, product, version, isFirstFile) => {
+            const trans = translations[currentLanguage];
+            const outputHeaders = [trans.productHeader, trans.versionHeader, ...headers];
+
+            // 檢查是否有 BOM 處理器新增的欄位
+            const hasSysCpn = processedData.length > 0 && processedData[0]['SYS_CPN'] !== undefined;
+            const hasTtlUsage = processedData.length > 0 && processedData[0]['Ttl. Usage'] !== undefined;
+
+            if (hasSysCpn) outputHeaders.push('SYS_CPN');
+            if (hasTtlUsage) outputHeaders.push('Ttl. Usage');
+
+            // 第一個檔案需要包含標題列
+            const outputData = isFirstFile ? [outputHeaders] : [];
+
+            // 轉換每一行資料
+            for (let obj of processedData) {
+                const outputRow = [product, version];
+
+                headers.forEach(header => {
+                    outputRow.push(obj[header] !== undefined ? obj[header] : null);
+                });
+
+                if (hasSysCpn) outputRow.push(obj['SYS_CPN']);
+                if (hasTtlUsage) outputRow.push(obj['Ttl. Usage']);
+
+                outputData.push(outputRow);
+            }
+
+            return outputData;
+        };
+
+        /**
+         * 處理檔案列表
+         * Process file list
+         *
+         * @param {Array<File>} files - 要處理的檔案列表
+         * @param {Array} consolidatedData - 合併資料陣列（會被修改）
+         * @returns {Array} 更新後的合併資料陣列
+         */
         const processFileList = async (files, consolidatedData) => {
             let isFirstFile = true;
             for (let i = 0; i < files.length; i++) {
@@ -181,120 +494,73 @@
             }
             return consolidatedData;
         };
-        
+
         // ##################################################################################################################################################
-        // 處理單個檔案 Process Single File
+        // 主要檔案處理函數 (Main File Processing Function)
         // ##################################################################################################################################################
-        
+
+        /**
+         * 處理單個 XLS 檔案
+         * Process single XLS file
+         *
+         * @param {File} file - 要處理的檔案物件
+         * @param {boolean} isFirstFile - 是否為第一個檔案（影響是否輸出標題列）
+         * @returns {Array<Array>} 處理後的資料陣列
+         *
+         * 處理流程 (Processing flow):
+         * 1. 讀取並解碼檔案內容
+         * 2. 解析CSV資料
+         * 3. 提取檔案元數據（產品代碼、版本）
+         * 4. 查找欄位索引
+         * 5. 清洗和轉換資料
+         * 6. 轉換為物件格式
+         * 7. 執行BOM層次結構處理
+         * 8. 格式化輸出資料
+         */
         const processFile = async (file, isFirstFile) => {
             try {
-                // 获取当前语言的转换字典
                 const trans = translations[currentLanguage];
-                
-                // 1. 檔案讀取與解析
+
+                // ========== 步驟 1: 讀取並解碼檔案內容 ==========
                 const arrayBuffer = await file.arrayBuffer();
-                const content = new Uint8Array(arrayBuffer);
-                let decodedContent = '';
-                let successEncoding = '';
-                
-                // 優先嘗試解碼，Big5優先用於中文檔案
-                for (let encoding of CONFIG.DECODING_FORMATS) {
-                    try {
-                        const decoder = new TextDecoder(encoding, { fatal: true });
-                        decodedContent = decoder.decode(content);
-                        
-                        // 驗證解碼結果是否有效（檢查是否為空或包含太多無效字符）
-                        if (decodedContent && decodedContent.trim().length > 0) {
-                            successEncoding = encoding;
-                            console.log(`✓ Successfully decoded with ${encoding}`);
-                            break;
-                        }
-                    } catch (error) {
-                        console.log(`使用${encoding}解碼失敗: ${error.message}`);
-                        continue;
-                    }
-                }
-                
-                if (!decodedContent || decodedContent.trim().length === 0) {
-                    throw new Error('無法解碼檔案內容。Unable to decode file content.');
-                }
-                
+                const { decodedContent, encoding } = decodeFileContent(arrayBuffer);
+
+                // ========== 步驟 2: 解析 CSV 資料 ==========
                 const parseResult = Papa.parse(decodedContent, {
                     header: false,
                     skipEmptyLines: true,
                     dynamicTyping: false
                 });
-                
+
                 const data = parseResult.data;
-                console.log(`檔案: ${file.name}, 編碼: ${successEncoding}, 數據行: ${data.length}`);
-                
+                console.log(`檔案: ${file.name}, 編碼: ${encoding}, 數據行: ${data.length}`);
+
+                // 處理空檔案或只有標題列的情況
                 if (data.length <= 1) {
                     return isFirstFile ? [[trans.productHeader, trans.versionHeader, ...data[0]]] : [];
                 }
-                
-                // 2. 預處理區塊
+
+                // ========== 步驟 3: 提取檔案元數據 ==========
                 const { product, version } = parseFilename(file.name);
-                const trimmedHeaders = data[0].map(header => header.trim());
                 const formattedProduct = formatProduct(product);
                 const formattedVersion = formatDate(version.split('.')[0]);
-                
-                // 查找關鍵欄位索引
-                const lvIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'lv');
-                const unitUsgIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'unit usg');
-                const lnIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'ln');
-                const materialIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'material');
-                const partNumberIndex = trimmedHeaders.findIndex(header => header.toLowerCase() === 'part number');
-                
-                if (unitUsgIndex === -1 || lvIndex === -1) {
+
+                // ========== 步驟 4: 查找欄位索引 ==========
+                const columnInfo = findColumnIndices(data[0]);
+
+                // 驗證必要欄位
+                if (columnInfo.unitUsgIndex === -1 || columnInfo.lvIndex === -1) {
                     console.error('Missing required columns: Unit Usg or LV');
                     return [];
                 }
-                
-                // 數字和字串欄位索引
-                const numericColumnIndices = [];
-                const stringColumnIndices = [];
-                
-                trimmedHeaders.forEach((header, index) => {
-                    const h = header.toLowerCase();
-                    if (CONFIG.NUMERIC_HEADERS_INCLUDE.some(kw => h.includes(kw)) || CONFIG.NUMERIC_HEADERS_EXACT.includes(h)) {
-                        numericColumnIndices.push(index);
-                    }
-                    if (CONFIG.STRING_ID_HEADERS.includes(h)) {
-                        stringColumnIndices.push(index);
-                    }
-                });
-                
-                // 資料清洗與轉換
-                for (let i = 1; i < data.length; i++) {
-                    if (!data[i]) continue;
-                    
-                    numericColumnIndices.forEach(colIndex => {
-                        if (data[i][colIndex] != null) {
-                            data[i][colIndex] = safeToNumber(data[i][colIndex]);
-                        }
-                    });
-                    
-                    stringColumnIndices.forEach(colIndex => {
-                        if (data[i][colIndex] != null) {
-                            data[i][colIndex] = formatProduct(String(data[i][colIndex]));
-                        }
-                    });
-                }
-                
-                // 3. 主處理迴圈 - 使用BOMHierarchyProcessor
-                const dataObjects = [];
-                for (let i = 1; i < data.length; i++) {
-                    const row = data[i];
-                    const rowObj = {};
-                    
-                    trimmedHeaders.forEach((header, idx) => {
-                        rowObj[header] = row[idx];
-                    });
-                    
-                    dataObjects.push(rowObj);
-                }
-                
-                // 使用BOMHierarchyProcessor
+
+                // ========== 步驟 5: 清洗和轉換資料 ==========
+                cleanDataRows(data, columnInfo.numericColumnIndices, columnInfo.stringColumnIndices);
+
+                // ========== 步驟 6: 轉換為物件格式 ==========
+                const dataObjects = convertToDataObjects(data, columnInfo.trimmedHeaders);
+
+                // ========== 步驟 7: 執行 BOM 層次結構處理 ==========
                 let processedDataObjects = [];
                 if (dataObjects.length > 0 && typeof BOMHierarchyProcessor !== 'undefined') {
                     try {
@@ -306,39 +572,21 @@
                         processedDataObjects = processor.process();
                     } catch (error) {
                         console.warn('BOMHierarchyProcessor error:', error);
-                        processedDataObjects = dataObjects;
+                        processedDataObjects = dataObjects; // 發生錯誤時使用原始資料
                     }
                 } else {
                     processedDataObjects = dataObjects;
                 }
-                
-                // 轉換回陣列格式
-                const outputHeaders = [trans.productHeader, trans.versionHeader, ...trimmedHeaders];
-                
-                // 檢查是否有SYS_CPN欄位
-                const hasSysCpn = processedDataObjects.length > 0 && processedDataObjects[0]['SYS_CPN'] !== undefined;
-                const hasTtlUsage = processedDataObjects.length > 0 && processedDataObjects[0]['Ttl. Usage'] !== undefined;
-                
-                if (hasSysCpn) outputHeaders.push('SYS_CPN');
-                if (hasTtlUsage) outputHeaders.push('Ttl. Usage');
-                
-                const outputData = isFirstFile ? [outputHeaders] : [];
-                
-                for (let obj of processedDataObjects) {
-                    const outputRow = [formattedProduct, formattedVersion];
-                    
-                    trimmedHeaders.forEach(header => {
-                        outputRow.push(obj[header] !== undefined ? obj[header] : null);
-                    });
-                    
-                    if (hasSysCpn) outputRow.push(obj['SYS_CPN']);
-                    if (hasTtlUsage) outputRow.push(obj['Ttl. Usage']);
-                    
-                    outputData.push(outputRow);
-                }
-                
-                return outputData;
-                
+
+                // ========== 步驟 8: 格式化輸出資料 ==========
+                return formatOutputData(
+                    processedDataObjects,
+                    columnInfo.trimmedHeaders,
+                    formattedProduct,
+                    formattedVersion,
+                    isFirstFile
+                );
+
             } catch (error) {
                 console.error('Error processing file:', file.name, error);
                 return [];
@@ -346,53 +594,89 @@
         };
         
         // ##################################################################################################################################################
-        // UI 控制函數
+        // UI 控制函數區塊 (UI Control Functions)
         // ##################################################################################################################################################
-        
+
+        // ========================================
+        // 語言切換相關函數 (Language Toggle Functions)
+        // ========================================
+
+        /**
+         * 切換語言
+         * Toggle language between zh-TW and en
+         */
         function toggleLanguageGroup() {
             currentLanguage = currentLanguage === 'zh-TW' ? 'en' : 'zh-TW';
             updateUILanguage();
             updateLangButtons();
         }
-        
+
+        /**
+         * 更新語言按鈕的視覺狀態
+         * Update visual state of language buttons
+         */
         function updateLangButtons() {
             document.getElementById('langZH').classList.toggle('active', currentLanguage === 'zh-TW');
             document.getElementById('langEN').classList.toggle('active', currentLanguage === 'en');
         }
-        
+
+        /**
+         * 更新整個 UI 的語言文字
+         * Update all UI text based on current language
+         */
         function updateUILanguage() {
             const trans = translations[currentLanguage];
+
+            // 更新 HTML 語言屬性
             document.documentElement.lang = currentLanguage;
+
+            // 更新標題區塊
             document.getElementById('title').textContent = trans.title;
             document.getElementById('subtitle').textContent = trans.subtitle;
+
+            // 更新輸入區塊
             document.getElementById('inputTitle').textContent = trans.inputTitle;
             document.getElementById('typeLabel').textContent = trans.typeLabel;
             document.getElementById('selectLabel').textContent = trans.selectLabel;
             document.getElementById('processBtn').textContent = trans.processBtn;
+
+            // 更新選項按鈕
+            document.getElementById('optFile').textContent = trans.optFile;
+            document.getElementById('optFolder').textContent = trans.optFolder;
+            document.getElementById('optZip').textContent = trans.optZip;
+
+            // 更新統計區塊
             document.getElementById('statsTitle').textContent = trans.statsTitle;
             document.getElementById('statFileCountLabel').textContent = trans.statFileCountLabel;
             document.getElementById('statTotalRowsLabel').textContent = trans.statTotalRowsLabel;
             document.getElementById('statElapsedTimeLabel').textContent = trans.statElapsedTimeLabel;
             document.getElementById('statAvgTimeLabel').textContent = trans.statAvgTimeLabel;
             document.getElementById('statThroughputLabel').textContent = trans.statThroughputLabel;
+
+            // 更新頁尾
             document.getElementById('footerText').textContent = trans.footerText;
-            
-            // Update option buttons
-            document.getElementById('optFile').textContent = trans.optFile;
-            document.getElementById('optFolder').textContent = trans.optFolder;
-            document.getElementById('optZip').textContent = trans.optZip;
-            
+
+            // 更新選擇按鈕文字
             updateSelectButtonText();
-            
+
+            // 更新路徑顯示（如果沒有選擇檔案）
             if (selectedFiles.length === 0) {
                 document.getElementById('pathDisplay').textContent = trans.pathEmpty;
             }
         }
-        
+
+        // ========================================
+        // 輸入類型選擇相關函數 (Input Type Selection Functions)
+        // ========================================
+
+        /**
+         * 更新選擇按鈕的文字
+         * Update select button text based on input type
+         */
         function updateSelectButtonText() {
             const trans = translations[currentLanguage];
             const btn = document.getElementById('selectBtn');
-            
+
             if (selectedInputType === 'file') {
                 btn.textContent = trans.selectBtnFile;
             } else if (selectedInputType === 'folder') {
@@ -401,18 +685,30 @@
                 btn.textContent = trans.selectBtnZip;
             }
         }
-        
+
+        /**
+         * 選擇輸入類型（檔案/資料夾/ZIP）
+         * Select input type (file/folder/zip)
+         *
+         * @param {string} type - 輸入類型: 'file', 'folder', 或 'zip'
+         */
         function selectInputType(type) {
             selectedInputType = type;
-            
+
+            // 更新按鈕的 active 狀態
             document.querySelectorAll('.btn-option').forEach(btn => {
                 btn.classList.remove('active');
             });
             event.target.classList.add('active');
-            
+
+            // 更新選擇按鈕文字
             updateSelectButtonText();
         }
-        
+
+        /**
+         * 觸發檔案選擇對話框
+         * Trigger file selection dialog based on input type
+         */
         function selectInput() {
             if (selectedInputType === 'file') {
                 document.getElementById('xlsFileInput').click();
@@ -422,18 +718,28 @@
                 document.getElementById('zipInput').click();
             }
         }
-        
+
+        // ========================================
+        // 路徑顯示相關函數 (Path Display Functions)
+        // ========================================
+
+        /**
+         * 更新檔案路徑顯示區
+         * Update file path display area
+         *
+         * @param {Array<File>} files - 選中的檔案列表
+         */
         function updatePathDisplay(files) {
             const pathDisplay = document.getElementById('pathDisplay');
-            
+
             if (files.length === 0) {
                 pathDisplay.textContent = translations[currentLanguage].pathEmpty;
                 pathDisplay.classList.add('empty');
                 return;
             }
-            
+
             pathDisplay.classList.remove('empty');
-            
+
             if (files.length === 1) {
                 pathDisplay.textContent = files[0].name;
             } else {
@@ -442,121 +748,210 @@
             }
         }
         
+        // ========================================
+        // 事件監聽器區塊 (Event Listeners)
+        // ========================================
+
+        /**
+         * 檔案輸入事件監聽器
+         * File input event listener
+         * 處理單個或多個 .xls 檔案的選擇
+         */
         document.getElementById('xlsFileInput').addEventListener('change', function(event) {
             selectedFiles = Array.from(event.target.files);
             updatePathDisplay(selectedFiles);
-            showMessage(`${translations[currentLanguage].filesSelectedMsg} ${selectedFiles.length} ${translations[currentLanguage].filesSelectedCount}`, 'success');
+            showMessage(
+                `${translations[currentLanguage].filesSelectedMsg} ${selectedFiles.length} ${translations[currentLanguage].filesSelectedCount}`,
+                'success'
+            );
         });
-        
+
+        /**
+         * 資料夾輸入事件監聽器
+         * Folder input event listener
+         * 處理資料夾選擇，並過濾出 .xls 檔案（排除 .xlsx）
+         */
         document.getElementById('xlsFolderInput').addEventListener('change', function(event) {
-            const files = Array.from(event.target.files).filter(f => 
+            const files = Array.from(event.target.files).filter(f =>
                 f.name.toLowerCase().endsWith('.xls') && !f.name.toLowerCase().endsWith('.xlsx')
             );
             selectedFiles = files;
             updatePathDisplay(selectedFiles);
-            showMessage(`${translations[currentLanguage].filesSelectedMsg} ${files.length} ${translations[currentLanguage].filesSelectedCount}`, 'success');
+            showMessage(
+                `${translations[currentLanguage].filesSelectedMsg} ${files.length} ${translations[currentLanguage].filesSelectedCount}`,
+                'success'
+            );
         });
-        
+
+        /**
+         * ZIP 檔案輸入事件監聽器
+         * ZIP file input event listener
+         * 解壓縮 ZIP 並提取所有 .xls 檔案（包括子目錄）
+         */
         document.getElementById('zipInput').addEventListener('change', async function(event) {
             try {
                 const zipFile = event.target.files[0];
                 const zip = new JSZip();
                 const contents = await zip.loadAsync(zipFile);
                 const xlsFiles = [];
-                
-                // 遍歷ZIP中的所有文件，包括子目錄
+
+                // 遍歷 ZIP 中的所有文件，包括子目錄
                 for (const fileName in contents.files) {
                     if (fileName.toLowerCase().endsWith('.xls') && !fileName.toLowerCase().endsWith('.xlsx')) {
                         const fileData = await contents.files[fileName].async("arraybuffer");
                         xlsFiles.push(new File([fileData], fileName));
                     }
                 }
-                
+
                 selectedFiles = xlsFiles;
                 updatePathDisplay(xlsFiles);
-                showMessage(`${translations[currentLanguage].filesExtractedMsg} ${xlsFiles.length} ${translations[currentLanguage].filesExtractedCount}`, 'success');
+                showMessage(
+                    `${translations[currentLanguage].filesExtractedMsg} ${xlsFiles.length} ${translations[currentLanguage].filesExtractedCount}`,
+                    'success'
+                );
             } catch (error) {
                 showMessage(`${translations[currentLanguage].zipParseFailed}${error.message}`, 'error');
                 console.error('ZIP processing error:', error);
             }
         });
-        
+
+        // ========================================
+        // 訊息提示相關函數 (Message Display Functions)
+        // ========================================
+
+        /**
+         * 顯示訊息提示
+         * Display message to user
+         *
+         * @param {string} message - 要顯示的訊息內容
+         * @param {string} type - 訊息類型: 'info', 'success', 'error'
+         */
         function showMessage(message, type = 'info') {
             const messageEl = document.getElementById('message');
             messageEl.textContent = message;
             messageEl.className = `message ${type}`;
-            
+
+            // 非錯誤訊息會在 3 秒後自動隱藏
             if (type !== 'error') {
                 setTimeout(() => {
                     messageEl.className = 'message';
                 }, 3000);
             }
         }
-        
+
+        // ========================================
+        // 資料處理相關函數 (Data Processing Functions)
+        // ========================================
+
+        /**
+         * 處理資料 - 主要處理流程
+         * Process data - Main processing workflow
+         *
+         * 流程 (Workflow):
+         * 1. 驗證是否有選擇檔案
+         * 2. 處理所有選中的檔案
+         * 3. 計算處理統計數據
+         * 4. 顯示統計結果
+         * 5. 下載合併後的結果
+         */
         async function processData() {
             if (selectedFiles.length === 0) {
                 showMessage(translations[currentLanguage].selectError, 'error');
                 return;
             }
-            
+
             try {
                 const startTime = performance.now();
                 allConsolidatedData = [];
                 const processedFileCount = selectedFiles.length;
-                
-                // 使用統一的processFileList處理檔案列表
+
+                // 使用統一的 processFileList 處理檔案列表
                 allConsolidatedData = await processFileList(selectedFiles, []);
-                
+
                 const elapsedTime = performance.now() - startTime;
-                
-                // 顯示統計
+
+                // 顯示統計（排除標題列）
                 const totalRows = allConsolidatedData.length > 1 ? allConsolidatedData.length - 1 : 0;
                 displayStatistics(processedFileCount, totalRows, elapsedTime);
-                
+
                 // 下載結果
                 downloadResults(allConsolidatedData);
-                
+
                 showMessage(translations[currentLanguage].processSuccess, 'success');
-                
+
             } catch (error) {
                 showMessage(`${translations[currentLanguage].processFailed}${error.message}`, 'error');
                 console.error('Process error:', error);
             }
         }
-        
+
+        /**
+         * 顯示處理統計資訊
+         * Display processing statistics
+         *
+         * @param {number} fileCount - 處理的檔案數量
+         * @param {number} totalRows - 總資料行數
+         * @param {number} elapsedTime - 處理耗時（毫秒）
+         */
         function displayStatistics(fileCount, totalRows, elapsedTime) {
-            const throughput = totalRows > 0 ? (totalRows / (elapsedTime / 1000)).toFixed(0) : 0;
-            const avgFileTime = fileCount > 0 ? (elapsedTime / fileCount).toFixed(0) : 0;
             const trans = translations[currentLanguage];
+
+            // 計算吞吐量（每秒處理的資料行數）
+            const throughput = totalRows > 0 ? (totalRows / (elapsedTime / 1000)).toFixed(0) : 0;
+
+            // 計算平均每個檔案的處理時間
+            const avgFileTime = fileCount > 0 ? (elapsedTime / fileCount).toFixed(0) : 0;
+
             const throughputUnit = ' ' + trans.rowsPerSecUnit;
             const millisUnit = trans.millisUnit;
-            
+
+            // 更新統計數據顯示
             document.getElementById('statFileCount').textContent = fileCount.toLocaleString();
             document.getElementById('statTotalRows').textContent = totalRows.toLocaleString();
             document.getElementById('statElapsedTime').textContent = elapsedTime.toFixed(0) + millisUnit;
             document.getElementById('statAvgTime').textContent = avgFileTime + millisUnit;
             document.getElementById('statThroughput').textContent = throughput.toLocaleString() + throughputUnit;
-            
+
+            // 顯示統計區塊
             document.getElementById('statsSection').classList.remove('hidden');
         }
-        
+
+        /**
+         * 下載處理結果為 Excel 檔案
+         * Download processing results as Excel file
+         *
+         * @param {Array<Array>} data - 要下載的資料陣列
+         *
+         * 檔案命名格式 (File naming format):
+         * YYYYMMDD.HHMMSS_consolidated_data.xlsx
+         */
         function downloadResults(data) {
             try {
+                // 生成時間戳記作為檔案名稱（格式：YYYYMMDD.HHMMSS）
                 const timestamp = new Date().toLocaleString('sv-SE').replace(' ', '.').replace(/[-:]/g, '');
                 const fileName = `${timestamp}_consolidated_data.xlsx`;
-                
+
+                // 使用 XLSX 庫創建並下載 Excel 檔案
                 const ws = XLSX.utils.aoa_to_sheet(data);
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, ws, 'BOM Data');
                 XLSX.writeFile(wb, fileName);
-                
+
                 showMessage(translations[currentLanguage].downloadSuccess, 'success');
-                
+
             } catch (error) {
                 console.error('Download error:', error);
             }
         }
-        
+
+        // ========================================
+        // 初始化 (Initialization)
+        // ========================================
+
+        /**
+         * 頁面載入完成時的初始化
+         * Initialize on page load
+         */
         window.addEventListener('DOMContentLoaded', () => {
             updateUILanguage();
             console.log('BOM Processor Ready - BOMHierarchyProcessor:', typeof BOMHierarchyProcessor);
