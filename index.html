@@ -726,6 +726,9 @@
          * Update file path display area
          *
          * @param {Array<File>} files - 選中的檔案列表
+         *
+         * 注意：由於瀏覽器安全限制，無法取得完整磁碟路徑（如 C:\Users\...）
+         * 僅能顯示相對路徑或檔案名稱
          */
         function updatePathDisplay(files) {
             const pathDisplay = document.getElementById('pathDisplay');
@@ -746,28 +749,41 @@
             let pathLine = '';
 
             if (selectedInputType === 'file') {
-                // File: 顯示檔案名稱（瀏覽器安全限制無法取得完整路徑）
+                // File: 顯示檔案的相對路徑（如果有）或檔案名稱
+                // 注意：單個檔案選擇時，瀏覽器不提供路徑資訊
                 if (files.length === 1) {
-                    pathLine = files[0].name;
+                    pathLine = files[0].webkitRelativePath || files[0].name;
                 } else {
-                    pathLine = files[0].name + (files.length > 1 ? ` ... (+${files.length - 1} more)` : '');
+                    // 多個檔案：顯示第一個檔案的路徑
+                    const firstFilePath = files[0].webkitRelativePath || files[0].name;
+                    pathLine = firstFilePath + (files.length > 1 ? ` ... (+${files.length - 1} more)` : '');
                 }
             } else if (selectedInputType === 'folder') {
-                // Folder: 顯示資料夾完整路徑
+                // Folder: 顯示資料夾的完整相對路徑
                 if (files.length > 0 && files[0].webkitRelativePath) {
-                    const folderPath = files[0].webkitRelativePath.split('/')[0];
+                    // webkitRelativePath 格式: "FolderName/SubFolder/file.xls"
+                    // 取得完整的相對路徑（保留資料夾結構）
+                    const fullPath = files[0].webkitRelativePath;
+                    const folderPath = fullPath.substring(0, fullPath.lastIndexOf('/')) || fullPath.split('/')[0];
                     pathLine = folderPath;
                 } else {
                     pathLine = files.length > 0 ? files[0].name : '';
                 }
             } else if (selectedInputType === 'zip') {
-                // ZIP: 顯示ZIP檔案名稱
-                const zipFileName = document.getElementById('zipInput').files[0]?.name || 'ZIP file';
-                pathLine = zipFileName;
+                // ZIP: 顯示ZIP檔案名稱（包含完整路徑如果可用）
+                const zipFileInput = document.getElementById('zipInput');
+                if (zipFileInput.files[0]) {
+                    pathLine = zipFileInput.files[0].webkitRelativePath || zipFileInput.files[0].name;
+                } else {
+                    pathLine = 'ZIP file';
+                }
             }
 
-            // 組合兩列顯示
-            pathDisplay.textContent = `${fileCountLine}\n${pathLine}`;
+            // 組合兩列顯示（使用 HTML 結構）
+            pathDisplay.innerHTML = `
+                <div class="path-display-row">${fileCountLine}</div>
+                <div class="path-display-row">${pathLine}</div>
+            `;
         }
         
         // ========================================

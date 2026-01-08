@@ -263,13 +263,20 @@ button {
     border-radius: 8px;
     padding: 12px;
     min-height: 40px;
-    display: flex;
-    align-items: center;
     color: var(--dark-green);
     font-size: 13px;
     font-family: 'Courier New', monospace;
     word-break: break-all;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.path-display-row {
+    padding: 4px 0;
+}
+
+.path-display-row:first-child {
+    font-weight: 600;
+    color: var(--primary-green);
 }
 
 .path-display.empty {
