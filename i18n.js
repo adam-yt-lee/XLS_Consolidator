@@ -40,6 +40,7 @@ const translations = {
         filesExtractedCount: '個檔案',
         zipParseFailed: '✗ 解析ZIP失敗: ',
         processFailed: '✗ 處理失敗: ',
+        fileCountText: '個檔案',
 
         // 单位
         millisUnit: 'ms',
@@ -84,6 +85,7 @@ const translations = {
         filesExtractedCount: 'files',
         zipParseFailed: '✗ ZIP parsing failed: ',
         processFailed: '✗ Processing failed: ',
+        fileCountText: 'files',
 
         // 单位
         millisUnit: 'ms',
