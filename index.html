@@ -659,10 +659,8 @@
             // 更新選擇按鈕文字
             updateSelectButtonText();
 
-            // 更新路徑顯示（如果沒有選擇檔案）
-            if (selectedFiles.length === 0) {
-                document.getElementById('pathDisplay').textContent = trans.pathEmpty;
-            }
+            // 更新路徑顯示（語言切換時也要更新）
+            updatePathDisplay(selectedFiles);
         }
 
         // ========================================
@@ -740,8 +738,9 @@
 
             pathDisplay.classList.remove('empty');
 
-            // 第一列：顯示檔案個數（雙語）
-            const fileCountLine = `${files.length} files / ${files.length} 個檔案`;
+            // 第一列：顯示檔案個數（根據當前語言）
+            const trans = translations[currentLanguage];
+            const fileCountLine = `${files.length} ${trans.fileCountText}`;
 
             // 第二列：根據選擇類型顯示完整路徑
             let pathLine = '';
