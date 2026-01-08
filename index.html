@@ -179,8 +179,7 @@
              * - LV 3+ 的 DCS 或 DC02 元件向上尋找
              */
             SPECIAL_LV_RULES: [
-                {lv: 2, prefix: 'DCS|DC02'},
-                {lv: 2, prefix: 'HG9'}
+                {lv: 2, prefix: 'DCS|DC02|HG|EC|FH|AM|MA|AP|FA'}
             ]
         };
 
@@ -741,12 +740,35 @@
 
             pathDisplay.classList.remove('empty');
 
-            if (files.length === 1) {
-                pathDisplay.textContent = files[0].name;
-            } else {
-                const names = files.map(f => f.name).join(', ');
-                pathDisplay.textContent = `${files.length} files: ${names}`;
+            // 第一列：顯示檔案個數（雙語）
+            const fileCountLine = `${files.length} files / ${files.length} 個檔案`;
+
+            // 第二列：根據選擇類型顯示完整路徑
+            let pathLine = '';
+
+            if (selectedInputType === 'file') {
+                // File: 顯示檔案名稱（瀏覽器安全限制無法取得完整路徑）
+                if (files.length === 1) {
+                    pathLine = files[0].name;
+                } else {
+                    pathLine = files[0].name + (files.length > 1 ? ` ... (+${files.length - 1} more)` : '');
+                }
+            } else if (selectedInputType === 'folder') {
+                // Folder: 顯示資料夾完整路徑
+                if (files.length > 0 && files[0].webkitRelativePath) {
+                    const folderPath = files[0].webkitRelativePath.split('/')[0];
+                    pathLine = folderPath;
+                } else {
+                    pathLine = files.length > 0 ? files[0].name : '';
+                }
+            } else if (selectedInputType === 'zip') {
+                // ZIP: 顯示ZIP檔案名稱
+                const zipFileName = document.getElementById('zipInput').files[0]?.name || 'ZIP file';
+                pathLine = zipFileName;
             }
+
+            // 組合兩列顯示
+            pathDisplay.textContent = `${fileCountLine}\n${pathLine}`;
         }
         
         // ========================================
