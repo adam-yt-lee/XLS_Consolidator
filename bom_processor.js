@@ -1,15 +1,17 @@
 /**
  * BOM層級處理器
- * 版本：v2.5.0 (2025-01-23)
+ * 版本：v2.6.0 (2025-01-23)
  * 功能：
  *   - 支持簡化的LV限制規則 {lv: 2, prefix: 'DCS'}
  *   - operator 固定為 <= (自動)
  *   - 支持單個或多個特殊LV規則
+ *   - prefix 支持 | 分隔多個前綴（LV群組功能）
  *   - 自動TTL使用量計算
  *   - Material層級索引和快速查詢
  *   - LN 自動重新編號（修正原始檔案錯誤）
  *
  * 更新記錄：
+ *   v2.6.0 (2025-01-23) - prefix 支持 | 分隔多個前綴，實現 LV 群組功能
  *   v2.5.0 (2025-01-23) - 新增 LN 自動重新編號功能
  *   v2.4.0 (2025-01-23) - 簡化設計：移除 operator 參數，固定為 <=
  *   v2.3.0 (2025-01-23) - 支持 operator 操作符設計
@@ -22,17 +24,21 @@
 class BOMHierarchyProcessor {
     /**
      * BOM層級處理器
-     * 
+     *
      * @param {Array<Object>} data - BOM數據
      * @param {string} pattern - 符合條件的Material前綴，如"45|43|64|X75|X66"
      * @param {Object|Array|null} lvSpecialRules - 特殊LV層級規則
      *        - null: 無特殊規則
      *        - {lv: 2, prefix: 'DCS'}: LV <= 2 返回自身，LV > 2 向上尋找
-     *        - [{lv: 2, prefix: 'DCS'}, {lv: 3, prefix: 'XYZ'}]: 多個規則
-     * 
+     *        - {lv: 2, prefix: 'DCS|DC02'}: LV <= 2 的 DCS 或 DC02 元件返回自身
+     *        - [{lv: 2, prefix: 'DCS|DC02'}, {lv: 3, prefix: 'XYZ'}]: 多個規則
+     *
      * 行為（固定 operator 為 <=）：
      *   LV <= 規則中的 lv 值 → 返回自身
      *   LV > 規則中的 lv 值 → 向上尋找
+     *
+     * prefix 支持 | 分隔多個前綴（v2.6.0）：
+     *   'DCS|DC02' 表示同時匹配 DCS 和 DC02 開頭的元件
      */
     constructor(data, pattern, lvSpecialRules = null) {
         this.data = JSON.parse(JSON.stringify(data)); // 深拷貝
@@ -123,10 +129,18 @@ class BOMHierarchyProcessor {
             if (Array.isArray(this.lvSpecialRules)) {
                 console.log(`  - 特殊規則數：${this.lvSpecialRules.length}`);
                 this.lvSpecialRules.forEach((rule, idx) => {
-                    console.log(`    └─ 規則${idx + 1}：LV <= ${rule.lv} 且 前綴='${rule.prefix}' (返回自身)`);
+                    const prefixes = rule.prefix.split('|').map(p => p.trim());
+                    const prefixDisplay = prefixes.length > 1
+                        ? `前綴群組=[${prefixes.join(', ')}]`
+                        : `前綴='${rule.prefix}'`;
+                    console.log(`    └─ 規則${idx + 1}：LV <= ${rule.lv} 且 ${prefixDisplay} (返回自身)`);
                 });
             } else {
-                console.log(`  - 特殊規則：LV <= ${this.lvSpecialRules.lv} 且 前綴='${this.lvSpecialRules.prefix}' (返回自身)`);
+                const prefixes = this.lvSpecialRules.prefix.split('|').map(p => p.trim());
+                const prefixDisplay = prefixes.length > 1
+                    ? `前綴群組=[${prefixes.join(', ')}]`
+                    : `前綴='${this.lvSpecialRules.prefix}'`;
+                console.log(`  - 特殊規則：LV <= ${this.lvSpecialRules.lv} 且 ${prefixDisplay} (返回自身)`);
             }
         }
         
@@ -188,14 +202,23 @@ class BOMHierarchyProcessor {
     /**
      * 檢查單個規則是否匹配（返回自身）
      * 固定 operator 為 <=
+     *
+     * @param {number} lv - 層級值
+     * @param {string} material - Material 值
+     * @param {Object} rule - 規則物件 {lv: number, prefix: string}
+     *                        prefix 支持 | 分隔多個前綴，例如 'DCS|DC02'
+     * @returns {boolean}
      * @private
      */
     _checkSingleRule(lv, material, rule) {
-        // 檢查前綴
-        if (!this._startsWith(material, rule.prefix)) {
+        // 檢查前綴（支持 | 分隔的多個前綴）
+        const prefixes = rule.prefix.split('|').map(p => p.trim());
+        const matchesPrefix = prefixes.some(prefix => this._startsWith(material, prefix));
+
+        if (!matchesPrefix) {
             return false;
         }
-        
+
         // 固定使用 <= 判斷
         return lv <= rule.lv;
     }
@@ -278,6 +301,40 @@ class BOMHierarchyProcessor {
     
     /**
      * 處理所有行，返回添加了SYS_CPN和Ttl. Usage欄位的數據
+     *
+     * 完整處理流程圖：
+     * ┌─────────────────────────────────────┐
+     * │ 開始處理元件 (Material, LV)          │
+     * └─────────────────┬───────────────────┘
+     *                   ▼
+     *       ┌───────────────────────┐
+     *       │ 優先度 1：LV ≤ 1？     │
+     *       └─────┬─────────────┬───┘
+     *             │ YES         │ NO
+     *             ▼             ▼
+     *        ┌────────┐   ┌─────────────────────────────┐
+     *        │返回自身│   │ 優先度 2：SPECIAL_LV_RULES？ │
+     *        │✅ (P1) │   │ (prefix匹配 且 LV ≤ 設定值)  │
+     *        └────────┘   └─────┬───────────────────┬───┘
+     *                           │ YES               │ NO
+     *                           ▼                   ▼
+     *                      ┌────────┐   ┌────────────────────────┐
+     *                      │返回自身│   │ 優先度 3：FIXED_PATTERN？│
+     *                      │✅ (P2) │   │ (Material符合Pattern)   │
+     *                      └────────┘   └─────┬──────────────┬───┘
+     *                                         │ YES          │ NO
+     *                                         ▼              ▼
+     *                                    ┌────────┐   ┌──────────────┐
+     *                                    │返回自身│   │ 優先度 4：    │
+     *                                    │✅ (P3) │   │ 遞迴向上查詢  │
+     *                                    └────────┘   │ Part Number  │
+     *                                                 └──────┬───────┘
+     *                                                        ▼
+     *                                             ┌────────────────────┐
+     *                                             │ 向上查詢父層元件    │
+     *                                             │ (重複上述流程)     │
+     *                                             └────────────────────┘
+     *
      * @returns {Array<Object>}
      */
     process() {
