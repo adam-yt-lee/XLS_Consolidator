@@ -745,12 +745,14 @@
             const trans = translations[currentLanguage];
             const fileCountLine = `${files.length} ${trans.fileCountText}`;
 
-            // 第二列：根據選擇類型顯示完整路徑
+            // 第二列：根據選擇類型顯示完整路徑（加上前導文字）
             let pathLine = '';
+            let pathPrefix = '';
 
             if (selectedInputType === 'file') {
                 // File: 顯示檔案的相對路徑（如果有）或檔案名稱
                 // 注意：單個檔案選擇時，瀏覽器不提供路徑資訊
+                pathPrefix = trans.pathPrefixFile;
                 if (files.length === 1) {
                     pathLine = files[0].webkitRelativePath || files[0].name;
                 } else {
@@ -760,6 +762,7 @@
                 }
             } else if (selectedInputType === 'folder') {
                 // Folder: 顯示資料夾的完整相對路徑
+                pathPrefix = trans.pathPrefixFolder;
                 if (files.length > 0 && files[0].webkitRelativePath) {
                     // webkitRelativePath 格式: "FolderName/SubFolder/file.xls"
                     // 取得完整的相對路徑（保留資料夾結構）
@@ -771,6 +774,7 @@
                 }
             } else if (selectedInputType === 'zip') {
                 // ZIP: 顯示ZIP檔案名稱（包含完整路徑如果可用）
+                pathPrefix = trans.pathPrefixZip;
                 const zipFileInput = document.getElementById('zipInput');
                 if (zipFileInput.files[0]) {
                     pathLine = zipFileInput.files[0].webkitRelativePath || zipFileInput.files[0].name;
@@ -782,7 +786,7 @@
             // 組合兩列顯示（使用 HTML 結構）
             pathDisplay.innerHTML = `
                 <div class="path-display-row">${fileCountLine}</div>
-                <div class="path-display-row">${pathLine}</div>
+                <div class="path-display-row">${pathPrefix} ${pathLine}</div>
             `;
         }
         
