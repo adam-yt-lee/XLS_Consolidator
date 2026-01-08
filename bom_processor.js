@@ -1,6 +1,6 @@
 /**
  * BOM層級處理器
- * 版本：v2.7.0 (2025-01-23)
+ * 版本：v2.8.0 (2025-01-23)
  * 功能：
  *   - 支持簡化的LV限制規則 {lv: 2, prefix: 'DCS'}
  *   - operator 固定為 <= (自動)
@@ -11,6 +11,7 @@
  *   - LN 自動重新編號（修正原始檔案錯誤）
  *
  * 更新記錄：
+ *   v2.8.0 (2025-01-23) - 優化：調整優先度順序 FIXED_PATTERN(P2) > SPECIAL_LV_RULES(P3)
  *   v2.7.0 (2025-01-23) - 修復：_traverseHierarchyUnified 向上查找時加入 SPECIAL_LV_RULES 檢查
  *   v2.6.0 (2025-01-23) - prefix 支持 | 分隔多個前綴，實現 LV 群組功能
  *   v2.5.0 (2025-01-23) - 新增 LN 自動重新編號功能
@@ -273,13 +274,7 @@ class BOMHierarchyProcessor {
                 
                 const newUsage = initialUsage * parentUnitUsg;
 
-                // 優先檢查父層是否符合 SPECIAL_LV_RULES
-                const parentLV = parentRow.LV || -1;
-                if (this._matchesLVSpecialRule(parentLV, parentRow.Material)) {
-                    return [parentRow.Material, newUsage];
-                }
-
-                // 再檢查父層是否符合 FIXED_PATTERN
+                // 優先檢查父層是否符合 FIXED_PATTERN（主要規則）
                 if (this.matchesPattern(parentRow.Material)) {
                     const [_, finalTtlUsage] = this._traverseHierarchyUnified(
                         parentMaterial,
@@ -288,6 +283,12 @@ class BOMHierarchyProcessor {
                         maxDepth
                     );
                     return [parentRow.Material, finalTtlUsage];
+                }
+
+                // 再檢查父層是否符合 SPECIAL_LV_RULES（補充規則）
+                const parentLV = parentRow.LV || -1;
+                if (this._matchesLVSpecialRule(parentLV, parentRow.Material)) {
+                    return [parentRow.Material, newUsage];
                 }
 
                 // 否則繼續向上遞迴查找
@@ -321,18 +322,18 @@ class BOMHierarchyProcessor {
      *       └─────┬─────────────┬───┘
      *             │ YES         │ NO
      *             ▼             ▼
-     *        ┌────────┐   ┌─────────────────────────────┐
-     *        │返回自身│   │ 優先度 2：SPECIAL_LV_RULES？ │
-     *        │✅ (P1) │   │ (prefix匹配 且 LV ≤ 設定值)  │
-     *        └────────┘   └─────┬───────────────────┬───┘
-     *                           │ YES               │ NO
-     *                           ▼                   ▼
-     *                      ┌────────┐   ┌────────────────────────┐
-     *                      │返回自身│   │ 優先度 3：FIXED_PATTERN？│
-     *                      │✅ (P2) │   │ (Material符合Pattern)   │
-     *                      └────────┘   └─────┬──────────────┬───┘
-     *                                         │ YES          │ NO
-     *                                         ▼              ▼
+     *        ┌────────┐   ┌────────────────────────┐
+     *        │返回自身│   │ 優先度 2：FIXED_PATTERN？│
+     *        │✅ (P1) │   │ (Material符合Pattern)   │
+     *        └────────┘   └─────┬──────────────┬───┘
+     *                           │ YES          │ NO
+     *                           ▼              ▼
+     *                      ┌────────┐   ┌─────────────────────────────┐
+     *                      │返回自身│   │ 優先度 3：SPECIAL_LV_RULES？ │
+     *                      │✅ (P2) │   │ (prefix匹配 且 LV ≤ 設定值)  │
+     *                      └────────┘   └─────┬───────────────────┬───┘
+     *                                         │ YES               │ NO
+     *                                         ▼                   ▼
      *                                    ┌────────┐   ┌──────────────┐
      *                                    │返回自身│   │ 優先度 4：    │
      *                                    │✅ (P3) │   │ 遞迴向上查詢  │
@@ -370,11 +371,25 @@ class BOMHierarchyProcessor {
                 ttlUsageResults.push(unitUsg);
                 continue;
             }
-            
-            // 步驟1.5：特殊LV規則檢查（支持單個或多個規則）
+
+            // 步驟2：Material本身已符合Pattern（主要規則）
+            if (this.matchesPattern(currentMaterial)) {
+                sysCpnResults.push(currentMaterial);
+
+                // 計算Ttl. Usage
+                this.visited.clear();
+                const [_, ttlUsage] = this._traverseHierarchyUnified(
+                    currentMaterial,
+                    unitUsg
+                );
+                ttlUsageResults.push(ttlUsage);
+                continue;
+            }
+
+            // 步驟3：特殊LV規則檢查（補充規則，支持單個或多個規則）
             if (this._matchesLVSpecialRule(currentLV, currentMaterial)) {
                 sysCpnResults.push(currentMaterial);
-                
+
                 // 計算Ttl. Usage（向上累乘至LV=0）
                 this.visited.clear();
                 const [_, ttlUsage] = this._traverseHierarchyUnified(
@@ -385,21 +400,7 @@ class BOMHierarchyProcessor {
                 continue;
             }
             
-            // 步驟2：Material本身已符合Pattern
-            if (this.matchesPattern(currentMaterial)) {
-                sysCpnResults.push(currentMaterial);
-                
-                // 計算Ttl. Usage
-                this.visited.clear();
-                const [_, ttlUsage] = this._traverseHierarchyUnified(
-                    currentMaterial,
-                    unitUsg
-                );
-                ttlUsageResults.push(ttlUsage);
-                continue;
-            }
-            
-            // 步驟3：遞迴向上查詢
+            // 步驟4：遞迴向上查詢
             const currentPartNumber = row['Part Number'] || '';
             
             if (!currentPartNumber || currentPartNumber === '') {
