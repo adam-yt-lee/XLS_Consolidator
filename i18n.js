@@ -41,6 +41,9 @@ const translations = {
         zipParseFailed: '✗ 解析ZIP失敗: ',
         processFailed: '✗ 處理失敗: ',
         fileCountText: '個檔案',
+        pathPrefixFile: '檔案:',
+        pathPrefixFolder: '資料夾:',
+        pathPrefixZip: '壓縮檔:',
 
         // 单位
         millisUnit: 'ms',
@@ -86,6 +89,9 @@ const translations = {
         zipParseFailed: '✗ ZIP parsing failed: ',
         processFailed: '✗ Processing failed: ',
         fileCountText: 'files',
+        pathPrefixFile: 'File:',
+        pathPrefixFolder: 'Folder:',
+        pathPrefixZip: 'ZIP:',
 
         // 单位
         millisUnit: 'ms',
