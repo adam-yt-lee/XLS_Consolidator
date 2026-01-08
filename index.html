@@ -160,25 +160,26 @@
             FIXED_PATTERN: "45|43|64|X75|X66|36",
 
             /**
-             * 特殊 LV 規則配置（v2.4.0）
-             * Special LV rules configuration (v2.4.0)
+             * 特殊 LV 規則配置（v2.6.0）
+             * Special LV rules configuration (v2.6.0)
              *
              * 格式 (Format): {lv: number, prefix: string}
              * - lv: 層級閾值
-             * - prefix: 元件前綴
+             * - prefix: 元件前綴（支持 | 分隔多個前綴）
              *
              * 規則說明 (Rule description):
              * - 當元件前綴匹配且 LV <= 設定值時，返回自身
              * - 當元件前綴匹配且 LV > 設定值時，向上尋找父層
              * - operator 固定為 <=
+             * - prefix 支持使用 | 分隔多個前綴，實現 LV 群組
              *
              * 範例 (Example):
-             * {lv: 2, prefix: 'DCS'} 表示：
-             * - LV 1-2 的 DCS 元件返回自身
-             * - LV 3+ 的 DCS 元件向上尋找
+             * {lv: 2, prefix: 'DCS|DC02'} 表示：
+             * - LV 1-2 的 DCS 或 DC02 元件返回自身
+             * - LV 3+ 的 DCS 或 DC02 元件向上尋找
              */
             SPECIAL_LV_RULES: [
-                {lv: 2, prefix: 'DCS'},
+                {lv: 2, prefix: 'DCS|DC02'},
                 {lv: 2, prefix: 'HG9'}
             ]
         };
