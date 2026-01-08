@@ -1,6 +1,6 @@
 /**
  * BOM層級處理器
- * 版本：v2.6.0 (2025-01-23)
+ * 版本：v2.7.0 (2025-01-23)
  * 功能：
  *   - 支持簡化的LV限制規則 {lv: 2, prefix: 'DCS'}
  *   - operator 固定為 <= (自動)
@@ -11,6 +11,7 @@
  *   - LN 自動重新編號（修正原始檔案錯誤）
  *
  * 更新記錄：
+ *   v2.7.0 (2025-01-23) - 修復：_traverseHierarchyUnified 向上查找時加入 SPECIAL_LV_RULES 檢查
  *   v2.6.0 (2025-01-23) - prefix 支持 | 分隔多個前綴，實現 LV 群組功能
  *   v2.5.0 (2025-01-23) - 新增 LN 自動重新編號功能
  *   v2.4.0 (2025-01-23) - 簡化設計：移除 operator 參數，固定為 <=
@@ -271,7 +272,14 @@ class BOMHierarchyProcessor {
                 }
                 
                 const newUsage = initialUsage * parentUnitUsg;
-                
+
+                // 優先檢查父層是否符合 SPECIAL_LV_RULES
+                const parentLV = parentRow.LV || -1;
+                if (this._matchesLVSpecialRule(parentLV, parentRow.Material)) {
+                    return [parentRow.Material, newUsage];
+                }
+
+                // 再檢查父層是否符合 FIXED_PATTERN
                 if (this.matchesPattern(parentRow.Material)) {
                     const [_, finalTtlUsage] = this._traverseHierarchyUnified(
                         parentMaterial,
@@ -281,14 +289,15 @@ class BOMHierarchyProcessor {
                     );
                     return [parentRow.Material, finalTtlUsage];
                 }
-                
+
+                // 否則繼續向上遞迴查找
                 const [parentSysCpn, parentTtlUsage] = this._traverseHierarchyUnified(
                     parentMaterial,
                     newUsage,
                     depth + 1,
                     maxDepth
                 );
-                
+
                 return [parentSysCpn, parentTtlUsage];
             } finally {
                 this.visited.delete(startMaterial);
