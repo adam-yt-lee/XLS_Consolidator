@@ -565,17 +565,38 @@ class BOMHierarchyProcessor {
             const parentMaterialStr = String(currentPartNumber).trim();
 
             if (this.matchesPattern(parentMaterialStr)) {
-                sysCpnResults.push(parentMaterialStr);
+                // 特殊處理：如果 Part Number 是 43，需要檢查其上階是否有 45
+                if (this._is43Pattern(parentMaterialStr)) {
+                    this.visited.clear();
+                    const [finalMaterial, ttlUsage] = this._traverseHierarchyUnified(
+                        parentMaterialStr,
+                        unitUsg,
+                        0,
+                        20,
+                        currentLN
+                    );
 
-                this.visited.clear();
-                const [_, ttlUsage] = this._traverseHierarchyUnified(
-                    parentMaterialStr,
-                    unitUsg,
-                    0,
-                    20,
-                    currentLN  // 傳遞當前LN，確保只向上查找
-                );
-                ttlUsageResults.push(ttlUsage);
+                    // 如果向上找到了 45，返回 45；否則返回 43
+                    if (this._is45Pattern(finalMaterial)) {
+                        sysCpnResults.push(finalMaterial);
+                    } else {
+                        sysCpnResults.push(parentMaterialStr);
+                    }
+                    ttlUsageResults.push(ttlUsage);
+                } else {
+                    // 其他 pattern（45、64、X75 等）
+                    sysCpnResults.push(parentMaterialStr);
+
+                    this.visited.clear();
+                    const [_, ttlUsage] = this._traverseHierarchyUnified(
+                        parentMaterialStr,
+                        unitUsg,
+                        0,
+                        20,
+                        currentLN  // 傳遞當前LN，確保只向上查找
+                    );
+                    ttlUsageResults.push(ttlUsage);
+                }
             } else {
                 const [sysCpn, ttlUsage] = this._traverseHierarchyUnified(
                     parentMaterialStr,
