@@ -456,6 +456,29 @@ class BOMHierarchyProcessor {
 
             // 步驟2：Material本身已符合Pattern（主要規則）
             if (this.matchesPattern(currentMaterial)) {
+                // 特殊處理：43 料號需要向上查找是否有 45
+                if (this._is43Pattern(currentMaterial)) {
+                    // 向上查找
+                    this.visited.clear();
+                    const [finalMaterial, ttlUsage] = this._traverseHierarchyUnified(
+                        currentMaterial,
+                        unitUsg,
+                        0,
+                        20,
+                        currentLN
+                    );
+
+                    // 如果向上找到了 45，返回 45；否則返回當前的 43
+                    if (this._is45Pattern(finalMaterial)) {
+                        sysCpnResults.push(finalMaterial);
+                    } else {
+                        sysCpnResults.push(currentMaterial);
+                    }
+                    ttlUsageResults.push(ttlUsage);
+                    continue;
+                }
+
+                // 其他 pattern（45、64、X75 等）
                 sysCpnResults.push(currentMaterial);
 
                 // 計算Ttl. Usage
