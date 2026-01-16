@@ -1,6 +1,6 @@
 /**
  * BOM層級處理器
- * 版本：v2.8.0 (2025-01-23)
+ * 版本：v2.9.0 (2026-01-16)
  * 功能：
  *   - 支持簡化的LV限制規則 {lv: 2, prefix: 'DCS'}
  *   - operator 固定為 <= (自動)
@@ -9,8 +9,13 @@
  *   - 自動TTL使用量計算
  *   - Material層級索引和快速查詢
  *   - LN 自動重新編號（修正原始檔案錯誤）
+ *   - 嚴格向上查找限制（禁止向下查找）
  *
  * 更新記錄：
+ *   v2.9.0 (2026-01-16) - 修復：Material查找邏輯改為嚴格向上查找，禁止向下查找
+ *                          - _buildMaterialIndex 改為存儲所有索引（陣列）
+ *                          - 新增 _findMaterialBeforeLN 方法限制只查找 LN < currentLN 的行
+ *                          - _traverseHierarchyUnified 加入 currentLN 參數傳遞
  *   v2.8.0 (2025-01-23) - 優化：調整優先度順序 FIXED_PATTERN(P2) > SPECIAL_LV_RULES(P3)
  *   v2.7.0 (2025-01-23) - 修復：_traverseHierarchyUnified 向上查找時加入 SPECIAL_LV_RULES 檢查
  *   v2.6.0 (2025-01-23) - prefix 支持 | 分隔多個前綴，實現 LV 群組功能
@@ -90,30 +95,47 @@ class BOMHierarchyProcessor {
 
     /**
      * 構建Material索引
-     * 如果同一Material有多行，保留LN最大的（最接近末端的）
+     * 存儲所有Material出現的位置（支持重複Material）
      * @private
      */
     _buildMaterialIndex() {
         for (let idx = 0; idx < this.data.length; idx++) {
             const row = this.data[idx];
             const material = String(row.Material || '').trim();
-            
+
             if (material && material !== '') {
-                const currentLN = row.LN || 0;
-                
                 if (!this.materialIndex.has(material)) {
-                    this.materialIndex.set(material, idx);
+                    this.materialIndex.set(material, [idx]);
                 } else {
-                    const existingIdx = this.materialIndex.get(material);
-                    const existingLN = this.data[existingIdx].LN || 0;
-                    
-                    // 取LN最大的row
-                    if (currentLN > existingLN) {
-                        this.materialIndex.set(material, idx);
-                    }
+                    this.materialIndex.get(material).push(idx);
                 }
             }
         }
+    }
+
+    /**
+     * 查找指定Material在指定LN之前的最後一次出現
+     * @param {string} material - Material值
+     * @param {number} beforeLN - LN上限（不包含此值）
+     * @returns {number|undefined} 索引值，未找到則返回undefined
+     * @private
+     */
+    _findMaterialBeforeLN(material, beforeLN) {
+        const indices = this.materialIndex.get(material);
+        if (!indices) {
+            return undefined;
+        }
+
+        // 從後往前查找，找到第一個 LN < beforeLN 的行
+        for (let i = indices.length - 1; i >= 0; i--) {
+            const idx = indices[i];
+            const rowLN = this.data[idx].LN || 0;
+            if (rowLN < beforeLN) {
+                return idx;
+            }
+        }
+
+        return undefined;
     }
     
     /**
@@ -122,11 +144,17 @@ class BOMHierarchyProcessor {
      */
     _printStats() {
         const uniqueProducts = new Set(this.data.map(row => row.Product)).size;
+        // 計算 Material 總出現次數
+        let totalMaterialOccurrences = 0;
+        for (let indices of this.materialIndex.values()) {
+            totalMaterialOccurrences += indices.length;
+        }
+
         console.log('✓ BOM Hierarchy Processor 初始化成功');
         console.log(`  - 總行數：${this.data.length}`);
-        console.log(`  - Material索引數：${this.materialIndex.size}`);
+        console.log(`  - Material索引數：${this.materialIndex.size} (總出現次數：${totalMaterialOccurrences})`);
         console.log(`  - 搜尋Pattern：${this.pattern}`);
-        
+
         if (this.lvSpecialRules) {
             if (Array.isArray(this.lvSpecialRules)) {
                 console.log(`  - 特殊規則數：${this.lvSpecialRules.length}`);
@@ -145,7 +173,7 @@ class BOMHierarchyProcessor {
                 console.log(`  - 特殊規則：LV <= ${this.lvSpecialRules.lv} 且 ${prefixDisplay} (返回自身)`);
             }
         }
-        
+
         console.log(`  - Product數量：${uniqueProducts}`);
     }
     
@@ -227,51 +255,59 @@ class BOMHierarchyProcessor {
     
     /**
      * 統一的層級遞迴遍歷函數
+     * @param {string} startMaterial - 起始Material
+     * @param {number} initialUsage - 初始用量
+     * @param {number} depth - 遞迴深度
+     * @param {number} maxDepth - 最大遞迴深度
+     * @param {number} currentLN - 當前行的LN（用於限制只向上查找）
      * @private
      */
-    _traverseHierarchyUnified(startMaterial, initialUsage = 1.0, depth = 0, maxDepth = 20) {
+    _traverseHierarchyUnified(startMaterial, initialUsage = 1.0, depth = 0, maxDepth = 20, currentLN = Infinity) {
         if (depth > maxDepth) {
             return [startMaterial, initialUsage];
         }
-        
+
         try {
-            const currentIdx = this.materialIndex.get(startMaterial);
+            // 只查找LN小於currentLN的Material
+            const currentIdx = this._findMaterialBeforeLN(startMaterial, currentLN);
             if (currentIdx === undefined) {
                 return [startMaterial, initialUsage];
             }
-            
+
             const currentRow = this.data[currentIdx];
+            const currentRowLN = currentRow.LN || 0;
             const currentLV = currentRow.LV || -1;
-            
+
             if (this.visited.has(startMaterial)) {
                 return [startMaterial, initialUsage];
             }
-            
+
             this.visited.add(startMaterial);
-            
+
             try {
                 const parentPartNumber = currentRow['Part Number'] || '';
-                
+
                 if (currentLV <= 0 || !parentPartNumber || parentPartNumber === '') {
                     return [startMaterial, initialUsage];
                 }
-                
+
                 const parentMaterial = String(parentPartNumber).trim();
-                const parentIdx = this.materialIndex.get(parentMaterial);
-                
+                // 只查找LN小於當前行的父層Material
+                const parentIdx = this._findMaterialBeforeLN(parentMaterial, currentRowLN);
+
                 if (parentIdx === undefined) {
                     return [startMaterial, initialUsage];
                 }
-                
+
                 const parentRow = this.data[parentIdx];
-                
+
                 let parentUnitUsg = parentRow['Unit Usg'] || 1.0;
                 if (isNaN(parentUnitUsg)) {
                     parentUnitUsg = 1.0;
                 } else {
                     parentUnitUsg = parseFloat(parentUnitUsg);
                 }
-                
+
                 const newUsage = initialUsage * parentUnitUsg;
 
                 // 優先檢查父層是否符合 FIXED_PATTERN（主要規則）
@@ -280,7 +316,8 @@ class BOMHierarchyProcessor {
                         parentMaterial,
                         newUsage,
                         depth + 1,
-                        maxDepth
+                        maxDepth,
+                        currentRowLN  // 傳遞當前LN限制
                     );
                     return [parentRow.Material, finalTtlUsage];
                 }
@@ -296,7 +333,8 @@ class BOMHierarchyProcessor {
                     parentMaterial,
                     newUsage,
                     depth + 1,
-                    maxDepth
+                    maxDepth,
+                    currentRowLN  // 傳遞當前LN限制
                 );
 
                 return [parentSysCpn, parentTtlUsage];
@@ -349,22 +387,23 @@ class BOMHierarchyProcessor {
      */
     process() {
         console.log(`\n開始處理 ${this.data.length} 行數據...`);
-        
+
         const sysCpnResults = [];
         const ttlUsageResults = [];
-        
+
         for (let idx = 0; idx < this.data.length; idx++) {
             const row = this.data[idx];
             const currentMaterial = String(row.Material || '');
             const currentLV = row.LV;
-            
+            const currentLN = row.LN || 0;
+
             let unitUsg = row['Unit Usg'] || 1.0;
             if (isNaN(unitUsg)) {
                 unitUsg = 1.0;
             } else {
                 unitUsg = parseFloat(unitUsg);
             }
-            
+
             // 步驟1：LV檢查（頂層）
             if (currentLV <= 1) {
                 sysCpnResults.push(currentMaterial);
@@ -380,7 +419,10 @@ class BOMHierarchyProcessor {
                 this.visited.clear();
                 const [_, ttlUsage] = this._traverseHierarchyUnified(
                     currentMaterial,
-                    unitUsg
+                    unitUsg,
+                    0,
+                    20,
+                    currentLN  // 傳遞當前LN，確保只向上查找
                 );
                 ttlUsageResults.push(ttlUsage);
                 continue;
@@ -394,51 +436,60 @@ class BOMHierarchyProcessor {
                 this.visited.clear();
                 const [_, ttlUsage] = this._traverseHierarchyUnified(
                     currentMaterial,
-                    unitUsg
+                    unitUsg,
+                    0,
+                    20,
+                    currentLN  // 傳遞當前LN，確保只向上查找
                 );
                 ttlUsageResults.push(ttlUsage);
                 continue;
             }
-            
+
             // 步驟4：遞迴向上查詢
             const currentPartNumber = row['Part Number'] || '';
-            
+
             if (!currentPartNumber || currentPartNumber === '') {
                 sysCpnResults.push(currentMaterial);
                 ttlUsageResults.push(unitUsg);
                 continue;
             }
-            
+
             this.visited.clear();
-            
+
             const parentMaterialStr = String(currentPartNumber).trim();
-            
+
             if (this.matchesPattern(parentMaterialStr)) {
                 sysCpnResults.push(parentMaterialStr);
-                
+
                 this.visited.clear();
                 const [_, ttlUsage] = this._traverseHierarchyUnified(
                     parentMaterialStr,
-                    unitUsg
+                    unitUsg,
+                    0,
+                    20,
+                    currentLN  // 傳遞當前LN，確保只向上查找
                 );
                 ttlUsageResults.push(ttlUsage);
             } else {
                 const [sysCpn, ttlUsage] = this._traverseHierarchyUnified(
                     parentMaterialStr,
-                    unitUsg
+                    unitUsg,
+                    0,
+                    20,
+                    currentLN  // 傳遞當前LN，確保只向上查找
                 );
-                
+
                 sysCpnResults.push(sysCpn || currentMaterial);
                 ttlUsageResults.push(ttlUsage);
             }
         }
-        
+
         // 將結果添加到原數據
         for (let i = 0; i < this.data.length; i++) {
             this.data[i].SYS_CPN = sysCpnResults[i];
             this.data[i]['Ttl. Usage'] = ttlUsageResults[i];
         }
-        
+
         console.log('✓ 處理完成');
         return this.data;
     }
