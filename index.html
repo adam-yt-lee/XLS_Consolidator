@@ -539,6 +539,26 @@
                     return isFirstFile ? [[trans.productHeader, trans.versionHeader, ...data[0]]] : [];
                 }
 
+                // ========== 步驟 2.5: Plant Code 處理 ==========
+                // 如果第二行的 Plant Code 為空，從後續行中查找並填充
+                if (data.length > 1) {
+                    const plantCodeIndex = data[0].findIndex(h => h.trim().toLowerCase() === 'plant code');
+
+                    if (plantCodeIndex !== -1) {
+                        // 檢查第二行（索引1）的 Plant Code 是否為空
+                        if (!data[1][plantCodeIndex] || String(data[1][plantCodeIndex]).trim() === '') {
+                            // 從第三行（索引2）開始往下找
+                            for (let j = 2; j < data.length; j++) {
+                                if (data[j][plantCodeIndex] && String(data[j][plantCodeIndex]).trim() !== '') {
+                                    data[1][plantCodeIndex] = data[j][plantCodeIndex];
+                                    console.log(`✓ Plant Code 填充：從 LN=${j+1} 填充到 LN=2，值為 ${data[j][plantCodeIndex]}`);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ========== 步驟 3: 提取檔案元數據 ==========
                 const { product, version } = parseFilename(file.name);
                 const formattedProduct = formatProduct(product);
