@@ -458,22 +458,62 @@ class BOMHierarchyProcessor {
             if (this.matchesPattern(currentMaterial)) {
                 // 特殊處理：43 料號需要向上查找是否有 45
                 if (this._is43Pattern(currentMaterial)) {
-                    // 向上查找
+                    const currentPartNumber = row['Part Number'] || '';
+
+                    if (currentPartNumber && currentPartNumber !== '') {
+                        const parentMaterial = String(currentPartNumber).trim();
+
+                        // 檢查 Part Number 是否是 45
+                        if (this._is45Pattern(parentMaterial)) {
+                            sysCpnResults.push(parentMaterial);
+
+                            // 計算 Ttl. Usage：用 parentMaterial 向上查找
+                            this.visited.clear();
+                            const [_, ttlUsage] = this._traverseHierarchyUnified(
+                                parentMaterial,
+                                unitUsg,
+                                0,
+                                20,
+                                currentLN
+                            );
+                            ttlUsageResults.push(ttlUsage);
+                            continue;
+                        }
+
+                        // Part Number 也是 43，繼續向上查找
+                        if (this._is43Pattern(parentMaterial)) {
+                            this.visited.clear();
+                            const [finalMaterial, ttlUsage] = this._traverseHierarchyUnified(
+                                parentMaterial,
+                                unitUsg,
+                                0,
+                                20,
+                                currentLN
+                            );
+
+                            // 如果向上找到了 45，返回 45；否則返回當前的 43
+                            if (this._is45Pattern(finalMaterial)) {
+                                sysCpnResults.push(finalMaterial);
+                            } else {
+                                sysCpnResults.push(currentMaterial);
+                            }
+                            ttlUsageResults.push(ttlUsage);
+                            continue;
+                        }
+                    }
+
+                    // Part Number 為空或不是 43/45，返回當前的 43
+                    sysCpnResults.push(currentMaterial);
+
+                    // 計算 Ttl. Usage
                     this.visited.clear();
-                    const [finalMaterial, ttlUsage] = this._traverseHierarchyUnified(
+                    const [_, ttlUsage] = this._traverseHierarchyUnified(
                         currentMaterial,
                         unitUsg,
                         0,
                         20,
                         currentLN
                     );
-
-                    // 如果向上找到了 45，返回 45；否則返回當前的 43
-                    if (this._is45Pattern(finalMaterial)) {
-                        sysCpnResults.push(finalMaterial);
-                    } else {
-                        sysCpnResults.push(currentMaterial);
-                    }
                     ttlUsageResults.push(ttlUsage);
                     continue;
                 }
