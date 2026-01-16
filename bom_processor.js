@@ -1,6 +1,6 @@
 /**
  * BOM層級處理器
- * 版本：v2.9.0 (2026-01-16)
+ * 版本：v2.10.0 (2026-01-16)
  * 功能：
  *   - 支持簡化的LV限制規則 {lv: 2, prefix: 'DCS'}
  *   - operator 固定為 <= (自動)
@@ -10,8 +10,13 @@
  *   - Material層級索引和快速查詢
  *   - LN 自動重新編號（修正原始檔案錯誤）
  *   - 嚴格向上查找限制（禁止向下查找）
+ *   - 43/45 料號優先級處理（延迟返回机制）
  *
  * 更新記錄：
+ *   v2.10.0 (2026-01-16) - 新增：43/45 料號優先級處理邏輯
+ *                          - 當找到 43 料號時，繼續向上查找是否有 45 料號
+ *                          - 如果找到 45，返回 45；否則返回 43
+ *                          - 新增輔助方法：_is43Pattern() 和 _is45Pattern()
  *   v2.9.0 (2026-01-16) - 修復：Material查找邏輯改為嚴格向上查找，禁止向下查找
  *                          - _buildMaterialIndex 改為存儲所有索引（陣列）
  *                          - 新增 _findMaterialBeforeLN 方法限制只查找 LN < currentLN 的行
@@ -188,7 +193,25 @@ class BOMHierarchyProcessor {
         }
         return this.materialPattern.test(String(material));
     }
-    
+
+    /**
+     * 檢查Material是否為43料號
+     * @param {string} material - Material值
+     * @returns {boolean}
+     */
+    _is43Pattern(material) {
+        return /^43/.test(String(material || '').trim());
+    }
+
+    /**
+     * 檢查Material是否為45料號
+     * @param {string} material - Material值
+     * @returns {boolean}
+     */
+    _is45Pattern(material) {
+        return /^45/.test(String(material || '').trim());
+    }
+
     /**
      * 檢查Material是否以指定前綴開頭
      * @param {string} material
@@ -312,6 +335,26 @@ class BOMHierarchyProcessor {
 
                 // 優先檢查父層是否符合 FIXED_PATTERN（主要規則）
                 if (this.matchesPattern(parentRow.Material)) {
+                    // 特殊處理：43 料號需要繼續向上查找是否有 45
+                    if (this._is43Pattern(parentRow.Material)) {
+                        // 繼續向上查找
+                        const [upstreamMaterial, finalTtlUsage] = this._traverseHierarchyUnified(
+                            parentMaterial,
+                            newUsage,
+                            depth + 1,
+                            maxDepth,
+                            currentRowLN
+                        );
+
+                        // 如果向上找到了 45，返回 45；否則返回當前的 43
+                        if (this._is45Pattern(upstreamMaterial)) {
+                            return [upstreamMaterial, finalTtlUsage];
+                        } else {
+                            return [parentRow.Material, finalTtlUsage];
+                        }
+                    }
+
+                    // 其他 pattern（包括 45、64、X75 等）：繼續向上查找以累計 Ttl. Usage
                     const [_, finalTtlUsage] = this._traverseHierarchyUnified(
                         parentMaterial,
                         newUsage,
