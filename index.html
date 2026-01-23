@@ -105,8 +105,9 @@
         </div>
     </div>
     
-    <!-- 先加載語言包、bom_processor.js，再加載本頁面的JavaScript -->
+    <!-- 先加載語言包、bom_file_processor.js、bom_processor.js，再加載本頁面的JavaScript -->
     <script src="i18n.js"></script>
+    <script src="bom_file_processor.js"></script>
     <script src="bom_processor.js"></script>
     <script>
         // ##################################################################################################################################################
@@ -200,26 +201,6 @@
         // 工具函數區塊 (Utility Functions)
         // ##################################################################################################################################################
 
-        /**
-         * 解析檔案名稱，提取產品代碼和版本號
-         * Parse filename to extract product code and version number
-         *
-         * @param {string} filename - 檔案名稱
-         * @returns {Object} {product: string, version: string}
-         *
-         * 支援格式 (Supported formats):
-         * - 標準格式: PRODUCT_ID_YYYYMMDDHHMMSS.xls (11字元產品ID + 14位時間戳)
-         * - 簡化格式: PRODUCT_VERSION.xls
-         */
-        const parseFilename = (filename) => {
-            // 嘗試匹配標準格式：11字元產品ID + 14位時間戳
-            const match = filename.match(/([\w\d]{11})_(\d{14})/);
-            if (match) return { product: match[1], version: match[2] };
-
-            // 簡化格式：移除副檔名後用底線分割
-            const [product, version] = filename.replace(/\.[^/.]+$/, '').split('_');
-            return { product: product || '', version: version?.match(/\d+/)?.[0] || '' };
-        };
 
         /**
          * 安全地將值轉換為數字
@@ -243,22 +224,6 @@
                 return clean ? (isNaN(num) ? clean : num) : null;
             })() : null;
 
-        /**
-         * 格式化產品代碼
-         * Format product code
-         *
-         * @param {string|number} product - 產品代碼
-         * @returns {string} 格式化後的產品代碼
-         *
-         * 純數字產品代碼會去除前導零 (Remove leading zeros from numeric product codes)
-         */
-        const formatProduct = product => {
-            if (/^\d+$/.test(product)) {
-                return Number(product).toString();
-            } else {
-                return product;
-            }
-        };
 
         /**
          * 格式化日期字串
@@ -318,76 +283,18 @@
             return { decodedContent, encoding: successEncoding };
         };
 
-        /**
-         * 查找資料欄位索引
-         * Find column indices for data processing
-         *
-         * @param {Array<string>} headers - 標題列陣列
-         * @returns {Object} 包含各種欄位索引的物件
-         *
-         * 返回欄位 (Returned fields):
-         * - lvIndex: LV欄位索引（必要）
-         * - unitUsgIndex: Unit Usg欄位索引（必要）
-         * - lnIndex: LN欄位索引
-         * - materialIndex: Material欄位索引
-         * - partNumberIndex: Part Number欄位索引
-         * - numericColumnIndices: 所有數字欄位索引陣列
-         * - stringColumnIndices: 所有字串ID欄位索引陣列
-         */
-        const findColumnIndices = (headers) => {
-            const trimmedHeaders = headers.map(h => h.trim());
-
-            // 查找必要欄位索引
-            const lvIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'lv');
-            const unitUsgIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'unit usg');
-            const lnIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'ln');
-            const materialIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'material');
-            const partNumberIndex = trimmedHeaders.findIndex(h => h.toLowerCase() === 'part number');
-
-            // 查找數字和字串欄位索引
-            const numericColumnIndices = [];
-            const stringColumnIndices = [];
-
-            trimmedHeaders.forEach((header, index) => {
-                const h = header.toLowerCase();
-
-                // 判斷是否為數字欄位
-                if (CONFIG.NUMERIC_HEADERS_INCLUDE.some(kw => h.includes(kw)) ||
-                    CONFIG.NUMERIC_HEADERS_EXACT.includes(h)) {
-                    numericColumnIndices.push(index);
-                }
-
-                // 判斷是否為字串ID欄位
-                if (CONFIG.STRING_ID_HEADERS.includes(h)) {
-                    stringColumnIndices.push(index);
-                }
-            });
-
-            return {
-                lvIndex,
-                unitUsgIndex,
-                lnIndex,
-                materialIndex,
-                partNumberIndex,
-                numericColumnIndices,
-                stringColumnIndices,
-                trimmedHeaders
-            };
-        };
 
         /**
-         * 清洗和轉換資料行
-         * Clean and transform data rows
+         * 清洗和轉換資料行（僅數值轉換）
+         * Clean and transform data rows (numeric conversion only)
          *
          * @param {Array<Array>} data - 原始資料陣列（含標題列）
          * @param {Array<number>} numericIndices - 數字欄位索引陣列
-         * @param {Array<number>} stringIndices - 字串欄位索引陣列
          *
          * 處理內容 (Processing):
          * - 數字欄位：轉換為數字類型，處理千分位和異常格式
-         * - 字串欄位：格式化產品代碼，去除前導零
          */
-        const cleanDataRows = (data, numericIndices, stringIndices) => {
+        const cleanDataRows = (data, numericIndices) => {
             // 從索引1開始，跳過標題列
             for (let i = 1; i < data.length; i++) {
                 if (!data[i]) continue;
@@ -396,13 +303,6 @@
                 numericIndices.forEach(colIndex => {
                     if (data[i][colIndex] != null) {
                         data[i][colIndex] = safeToNumber(data[i][colIndex]);
-                    }
-                });
-
-                // 格式化字串欄位
-                stringIndices.forEach(colIndex => {
-                    if (data[i][colIndex] != null) {
-                        data[i][colIndex] = formatProduct(String(data[i][colIndex]));
                     }
                 });
             }
@@ -434,47 +334,6 @@
             return dataObjects;
         };
 
-        /**
-         * 格式化輸出資料
-         * Format output data
-         *
-         * @param {Array<Object>} processedData - 處理後的資料物件陣列
-         * @param {Array<string>} headers - 原始標題列
-         * @param {string} product - 產品代碼
-         * @param {string} version - 版本號
-         * @param {boolean} isFirstFile - 是否為第一個檔案（決定是否包含標題列）
-         * @returns {Array<Array>} 格式化後的輸出資料陣列
-         */
-        const formatOutputData = (processedData, headers, product, version, isFirstFile) => {
-            const trans = translations[currentLanguage];
-            const outputHeaders = [trans.productHeader, trans.versionHeader, ...headers];
-
-            // 檢查是否有 BOM 處理器新增的欄位
-            const hasSysCpn = processedData.length > 0 && processedData[0]['SYS_CPN'] !== undefined;
-            const hasTtlUsage = processedData.length > 0 && processedData[0]['Ttl. Usage'] !== undefined;
-
-            if (hasSysCpn) outputHeaders.push('SYS_CPN');
-            if (hasTtlUsage) outputHeaders.push('Ttl. Usage');
-
-            // 第一個檔案需要包含標題列
-            const outputData = isFirstFile ? [outputHeaders] : [];
-
-            // 轉換每一行資料
-            for (let obj of processedData) {
-                const outputRow = [product, version];
-
-                headers.forEach(header => {
-                    outputRow.push(obj[header] !== undefined ? obj[header] : null);
-                });
-
-                if (hasSysCpn) outputRow.push(obj['SYS_CPN']);
-                if (hasTtlUsage) outputRow.push(obj['Ttl. Usage']);
-
-                outputData.push(outputRow);
-            }
-
-            return outputData;
-        };
 
         /**
          * 處理檔案列表
@@ -507,31 +366,41 @@
          * @returns {Array<Array>} 處理後的資料陣列
          *
          * 處理流程 (Processing flow):
-         * 1. 讀取並解碼檔案內容
-         * 2. 解析CSV資料
-         * 3. 提取檔案元數據（產品代碼、版本）
-         * 4. 查找欄位索引
-         * 5. 清洗和轉換資料
-         * 6. 轉換為物件格式
-         * 7. 執行BOM層次結構處理
-         * 8. 格式化輸出資料
+         * 1. 讀取並解碼檔案內容（通用）
+         * 2. 解析CSV資料（通用）
+         * 3. BOM 專屬處理（使用 BOMFileProcessor）
+         *    - Plant Code 處理
+         *    - 提取檔案元數據
+         *    - 查找欄位索引
+         *    - 字串欄位格式化
+         * 4. 通用數據清洗（數值轉換）
+         * 5. 轉換為物件格式（通用）
+         * 6. 執行BOM層次結構處理（BOM 專屬）
+         * 7. 格式化輸出資料（BOM 專屬）
          */
         const processFile = async (file, isFirstFile) => {
             try {
                 const trans = translations[currentLanguage];
 
-                // ========== 步驟 1: 讀取並解碼檔案內容 ==========
+                // 初始化 BOM 檔案處理器
+                const fileProcessor = new BOMFileProcessor({
+                    numericHeadersInclude: CONFIG.NUMERIC_HEADERS_INCLUDE,
+                    numericHeadersExact: CONFIG.NUMERIC_HEADERS_EXACT,
+                    stringIdHeaders: CONFIG.STRING_ID_HEADERS
+                });
+
+                // ========== 步驟 1: 讀取並解碼檔案內容（通用） ==========
                 const arrayBuffer = await file.arrayBuffer();
                 const { decodedContent, encoding } = decodeFileContent(arrayBuffer);
 
-                // ========== 步驟 2: 解析 CSV 資料 ==========
+                // ========== 步驟 2: 解析 CSV 資料（通用） ==========
                 const parseResult = Papa.parse(decodedContent, {
                     header: false,
                     skipEmptyLines: true,
                     dynamicTyping: false
                 });
 
-                const data = parseResult.data;
+                let data = parseResult.data;
                 console.log(`檔案: ${file.name}, 編碼: ${encoding}, 數據行: ${data.length}`);
 
                 // 處理空檔案或只有標題列的情況
@@ -539,33 +408,16 @@
                     return isFirstFile ? [[trans.productHeader, trans.versionHeader, ...data[0]]] : [];
                 }
 
-                // ========== 步驟 2.5: Plant Code 處理 ==========
-                // 如果第二行的 Plant Code 為空，從後續行中查找並填充
-                if (data.length > 1) {
-                    const plantCodeIndex = data[0].findIndex(h => h.trim().toLowerCase() === 'plant code');
+                // ========== 步驟 2.5: Plant Code 處理（BOM 專屬） ==========
+                data = fileProcessor.handlePlantCode(data);
 
-                    if (plantCodeIndex !== -1) {
-                        // 檢查第二行（索引1）的 Plant Code 是否為空
-                        if (!data[1][plantCodeIndex] || String(data[1][plantCodeIndex]).trim() === '') {
-                            // 從第三行（索引2）開始往下找
-                            for (let j = 2; j < data.length; j++) {
-                                if (data[j][plantCodeIndex] && String(data[j][plantCodeIndex]).trim() !== '') {
-                                    data[1][plantCodeIndex] = data[j][plantCodeIndex];
-                                    console.log(`✓ Plant Code 填充：從 LN=${j+1} 填充到 LN=2，值為 ${data[j][plantCodeIndex]}`);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
+                // ========== 步驟 3: 提取檔案元數據（BOM 專屬） ==========
+                const { product, version } = fileProcessor.parseFilename(file.name);
+                const formattedProduct = fileProcessor.formatProduct(product);
+                const formattedVersion = formatDate(version.split('.')[0]); // 使用通用的 formatDate
 
-                // ========== 步驟 3: 提取檔案元數據 ==========
-                const { product, version } = parseFilename(file.name);
-                const formattedProduct = formatProduct(product);
-                const formattedVersion = formatDate(version.split('.')[0]);
-
-                // ========== 步驟 4: 查找欄位索引 ==========
-                const columnInfo = findColumnIndices(data[0]);
+                // ========== 步驟 4: 查找欄位索引（BOM 專屬） ==========
+                const columnInfo = fileProcessor.findColumnIndices(data[0]);
 
                 // 驗證必要欄位
                 if (columnInfo.unitUsgIndex === -1 || columnInfo.lvIndex === -1) {
@@ -574,21 +426,25 @@
                 }
 
                 // ========== 步驟 5: 清洗和轉換資料 ==========
-                cleanDataRows(data, columnInfo.numericColumnIndices, columnInfo.stringColumnIndices);
+                // 5.1 數值欄位轉換（通用）
+                cleanDataRows(data, columnInfo.numericColumnIndices);
 
-                // ========== 步驟 6: 轉換為物件格式 ==========
+                // 5.2 字串欄位格式化（BOM 專屬）
+                fileProcessor.formatStringFields(data, columnInfo.stringColumnIndices);
+
+                // ========== 步驟 6: 轉換為物件格式（通用） ==========
                 const dataObjects = convertToDataObjects(data, columnInfo.trimmedHeaders);
 
-                // ========== 步驟 7: 執行 BOM 層次結構處理 ==========
+                // ========== 步驟 7: 執行 BOM 層次結構處理（BOM 專屬） ==========
                 let processedDataObjects = [];
                 if (dataObjects.length > 0 && typeof BOMHierarchyProcessor !== 'undefined') {
                     try {
-                        const processor = new BOMHierarchyProcessor(
+                        const hierarchyProcessor = new BOMHierarchyProcessor(
                             dataObjects,
                             CONFIG.FIXED_PATTERN,
                             CONFIG.SPECIAL_LV_RULES
                         );
-                        processedDataObjects = processor.process();
+                        processedDataObjects = hierarchyProcessor.process();
                     } catch (error) {
                         console.warn('BOMHierarchyProcessor error:', error);
                         processedDataObjects = dataObjects; // 發生錯誤時使用原始資料
@@ -597,13 +453,14 @@
                     processedDataObjects = dataObjects;
                 }
 
-                // ========== 步驟 8: 格式化輸出資料 ==========
-                return formatOutputData(
+                // ========== 步驟 8: 格式化輸出資料（BOM 專屬） ==========
+                return fileProcessor.formatOutputData(
                     processedDataObjects,
                     columnInfo.trimmedHeaders,
                     formattedProduct,
                     formattedVersion,
-                    isFirstFile
+                    isFirstFile,
+                    trans
                 );
 
             } catch (error) {
@@ -935,8 +792,8 @@
                 const totalRows = allConsolidatedData.length > 1 ? allConsolidatedData.length - 1 : 0;
                 displayStatistics(processedFileCount, totalRows, elapsedTime);
 
-                // 下載結果
-                downloadResults(allConsolidatedData);
+                // 下載結果（BOM Data）
+                downloadResults(allConsolidatedData, 'BOM Data', 'consolidated_data');
 
                 showMessage(translations[currentLanguage].processSuccess, 'success');
 
@@ -982,20 +839,22 @@
          * Download processing results as Excel file
          *
          * @param {Array<Array>} data - 要下載的資料陣列
+         * @param {string} sheetName - Excel Sheet 名稱（預設: 'Sheet1'）
+         * @param {string} fileNamePrefix - 檔案名稱前綴（預設: 'consolidated_data'）
          *
          * 檔案命名格式 (File naming format):
-         * YYYYMMDD.HHMMSS_consolidated_data.xlsx
+         * YYYYMMDD.HHMMSS_{fileNamePrefix}.xlsx
          */
-        function downloadResults(data) {
+        function downloadResults(data, sheetName = 'Sheet1', fileNamePrefix = 'consolidated_data') {
             try {
                 // 生成時間戳記作為檔案名稱（格式：YYYYMMDD.HHMMSS）
                 const timestamp = new Date().toLocaleString('sv-SE').replace(' ', '.').replace(/[-:]/g, '');
-                const fileName = `${timestamp}_consolidated_data.xlsx`;
+                const fileName = `${timestamp}_${fileNamePrefix}.xlsx`;
 
                 // 使用 XLSX 庫創建並下載 Excel 檔案
                 const ws = XLSX.utils.aoa_to_sheet(data);
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, 'BOM Data');
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
                 XLSX.writeFile(wb, fileName);
 
                 showMessage(translations[currentLanguage].downloadSuccess, 'success');
@@ -1015,7 +874,9 @@
          */
         window.addEventListener('DOMContentLoaded', () => {
             updateUILanguage();
-            console.log('BOM Processor Ready - BOMHierarchyProcessor:', typeof BOMHierarchyProcessor);
+            console.log('BOM Processors Ready');
+            console.log('  - BOMFileProcessor:', typeof BOMFileProcessor);
+            console.log('  - BOMHierarchyProcessor:', typeof BOMHierarchyProcessor);
         });
     </script>
 </body>
