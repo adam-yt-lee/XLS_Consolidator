@@ -10,7 +10,6 @@
     <!-- 外部庫 -->
     <script src="lib/xlsx.full.min.js"></script>
     <script src="lib/FileSaver.min.js"></script>
-    <script src="lib/jszip.min.js"></script>
     <script src="lib/papaparse.min.js"></script>
 	
 	<!-- <!-- 外部庫 --> -->
@@ -57,7 +56,7 @@
                 <!-- Hidden file inputs -->
                 <input type="file" id="xlsFileInput" accept=".xls" style="display:none;">
                 <input type="file" id="xlsFolderInput" accept=".xls" webkitdirectory directory multiple style="display:none;">
-                <input type="file" id="zipInput" accept=".zip" style="display:none;">
+                <input type="file" id="zipInput" accept=".zip,.7z" style="display:none;">
                 
                 <div class="button-group">
                     <button class="btn-secondary" onclick="processData()" id="processBtn"></button>
@@ -816,29 +815,26 @@
         });
 
         /**
-         * ZIP 檔案輸入事件監聽器
-         * ZIP file input event listener
-         * 解壓縮 ZIP 並提取所有 .xls 檔案（包括子目錄）
+         * 壓縮檔輸入事件監聽器
+         * Archive file input event listener
+         * 解壓縮 ZIP/7z 並提取所有 .xls 檔案（包括子目錄）
+         * 使用 libarchive.js 支援多種壓縮格式
          */
         document.getElementById('zipInput').addEventListener('change', async function(event) {
             try {
-                const zipFile = event.target.files[0];
-                const zip = new JSZip();
-                const contents = await zip.loadAsync(zipFile);
-                const xlsFiles = [];
+                const archiveFile = event.target.files[0];
+                if (!archiveFile) return;
 
-                // 遍歷 ZIP 中的所有文件，包括子目錄
-                for (const fileName in contents.files) {
-                    if (fileName.toLowerCase().endsWith('.xls') && !fileName.toLowerCase().endsWith('.xlsx')) {
-                        const fileData = await contents.files[fileName].async("arraybuffer");
-                        xlsFiles.push(new File([fileData], fileName));
-                    }
-                }
+                // 動態載入 archive-handler 模組
+                const { extractXlsFromArchive } = await import('./archive-handler.js');
+
+                // 提取 .xls 檔案
+                const xlsFiles = await extractXlsFromArchive(archiveFile);
 
                 selectedFiles = xlsFiles;
                 updatePathDisplay(xlsFiles);
             } catch (error) {
-                console.error('ZIP processing error:', error);
+                console.error('Archive processing error:', error);
             }
             clearInputTypeSelection();
         });
