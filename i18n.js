@@ -24,7 +24,7 @@ const translations = {
         // 按钮标签
         optFile: '📄 檔案',
         optFolder: '📁 資料夾',
-        optZip: '📦 壓縮檔(.zip)',
+        optZip: '📦 壓縮檔(.zip/.7z)',
 
         // 消息和反馈文本
         selectError: '✗ 請先選擇檔案',
@@ -34,7 +34,7 @@ const translations = {
         filesSelectedCount: '個檔案',
         filesExtractedMsg: '✓ 已提取',
         filesExtractedCount: '個檔案',
-        zipParseFailed: '✗ 解析ZIP失敗: ',
+        archiveParseFailed: '✗ 解析壓縮檔失敗: ',
         processFailed: '✗ 處理失敗: ',
         fileCountText: '個檔案',
         pathPrefixFile: '檔案:',
@@ -68,7 +68,7 @@ const translations = {
         // 按钮标签
         optFile: '📄 File',
         optFolder: '📁 Folder',
-        optZip: '📦 ZIP',
+        optZip: '📦 ZIP/7z',
 
         // 消息和反馈文本
         selectError: '✗ Please select files first',
@@ -78,7 +78,7 @@ const translations = {
         filesSelectedCount: 'files',
         filesExtractedMsg: '✓ Extracted',
         filesExtractedCount: 'files',
-        zipParseFailed: '✗ ZIP parsing failed: ',
+        archiveParseFailed: '✗ Archive parsing failed: ',
         processFailed: '✗ Processing failed: ',
         fileCountText: 'files',
         pathPrefixFile: 'File:',
