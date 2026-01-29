@@ -798,10 +798,6 @@
         document.getElementById('xlsFileInput').addEventListener('change', function(event) {
             selectedFiles = Array.from(event.target.files);
             updatePathDisplay(selectedFiles);
-            showMessage(
-                `${translations[currentLanguage].filesSelectedMsg} ${selectedFiles.length} ${translations[currentLanguage].filesSelectedCount}`,
-                'success'
-            );
             clearInputTypeSelection();
         });
 
@@ -816,10 +812,6 @@
             );
             selectedFiles = files;
             updatePathDisplay(selectedFiles);
-            showMessage(
-                `${translations[currentLanguage].filesSelectedMsg} ${files.length} ${translations[currentLanguage].filesSelectedCount}`,
-                'success'
-            );
             clearInputTypeSelection();
         });
 
@@ -845,12 +837,7 @@
 
                 selectedFiles = xlsFiles;
                 updatePathDisplay(xlsFiles);
-                showMessage(
-                    `${translations[currentLanguage].filesExtractedMsg} ${xlsFiles.length} ${translations[currentLanguage].filesExtractedCount}`,
-                    'success'
-                );
             } catch (error) {
-                showMessage(`${translations[currentLanguage].zipParseFailed}${error.message}`, 'error');
                 console.error('ZIP processing error:', error);
             }
             clearInputTypeSelection();
