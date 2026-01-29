@@ -686,15 +686,7 @@
          * @param {string} type - 輸入類型: 'file', 'folder', 或 'zip'
          */
         function selectInputType(type) {
-            selectedInputType = type;
-
-            // 更新按鈕的 active 狀態
-            document.querySelectorAll('.btn-option').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            event.target.classList.add('active');
-
-            // 直接觸發對應的檔案選擇對話框
+            // 先觸發檔案選擇對話框（必須在 user gesture 的直接 call stack 中）
             if (type === 'file') {
                 document.getElementById('xlsFileInput').click();
             } else if (type === 'folder') {
@@ -702,6 +694,13 @@
             } else if (type === 'zip') {
                 document.getElementById('zipInput').click();
             }
+
+            // 更新狀態和 UI
+            selectedInputType = type;
+            document.querySelectorAll('.btn-option').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
         }
 
         // ========================================
