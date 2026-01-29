@@ -39,7 +39,7 @@ body::before {
 }
 
 .container {
-    max-width: 1400px;
+    max-width: 900px;
     margin: 0 auto;
     background: white;
     border-radius: 16px;
@@ -54,9 +54,6 @@ body::before {
     text-align: center;
     position: relative;
     overflow: hidden;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
     box-shadow: 0 4px 16px rgba(92, 171, 50, 0.12);
 }
 
@@ -87,7 +84,6 @@ body::before {
 .header-content {
     position: relative;
     z-index: 1;
-    flex: 1;
     text-align: center;
 }
 
@@ -128,7 +124,9 @@ body::before {
 }
 
 .lang-toggle {
-    position: relative;
+    position: absolute;
+    top: 20px;
+    right: 20px;
     z-index: 2;
     display: flex;
     background: white;
@@ -356,23 +354,14 @@ button {
 }
 
 @media (max-width: 768px) {
-    .header {
-        flex-direction: column;
-    }
-    
-    .lang-toggle {
-        margin-top: 20px;
-        width: 100%;
-    }
-    
     .header h1 {
         font-size: 1.8em;
     }
-    
+
     .content {
         padding: 20px;
     }
-    
+
     .section {
         padding: 20px;
     }

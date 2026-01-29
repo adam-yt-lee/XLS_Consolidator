@@ -11,10 +11,6 @@ const translations = {
         subtitle: '從SAP ZSDR392下載的XLS檔案\n進行自動化合併處理&新增欄位',
         inputTitle: '📥 輸入數據',
         typeLabel: '選擇輸入類型',
-        selectLabel: '選擇',
-        selectBtnFile: '📄 選擇檔案',
-        selectBtnFolder: '📁 選擇資料夾',
-        selectBtnZip: '📦 選擇ZIP',
         processBtn: '⚙️ 開始處理',
         statsTitle: '📊 處理結果統計',
         statFileCountLabel: '檔案數量',
@@ -22,7 +18,7 @@ const translations = {
         statElapsedTimeLabel: '處理耗時',
         statAvgTimeLabel: '平均檔案耗時',
         statThroughputLabel: '吞吐量',
-        footerText: '✨ XLS合併工具 v20260107 | Adam @仁寶電腦 伺服器 #55095',
+        footerText: '✨ XLS合併工具 v20260129 | Adam @仁寶電腦 伺服器 #55095',
         pathEmpty: '未選擇任何檔案',
 
         // 按钮标签
@@ -59,10 +55,6 @@ const translations = {
         subtitle: 'XLS files downloaded from SAP ZSDR392:\nAutomated consolidation & adding new columns',
         inputTitle: '📥 Input Data',
         typeLabel: 'Select Input Type',
-        selectLabel: 'Select',
-        selectBtnFile: '📄 Select File',
-        selectBtnFolder: '📁 Select Folder',
-        selectBtnZip: '📦 Select ZIP',
         processBtn: '⚙️ Start Processing',
         statsTitle: '📊 Processing Results',
         statFileCountLabel: 'File Count',
@@ -70,7 +62,7 @@ const translations = {
         statElapsedTimeLabel: 'Processing Time',
         statAvgTimeLabel: 'Avg File Time',
         statThroughputLabel: 'Throughput',
-        footerText: '✨ XLS Consolidator v20260107 | Adam @Compal Server #55095',
+        footerText: '✨ XLS Consolidator v20260129 | Adam @Compal Server #55095',
         pathEmpty: 'No files selected',
 
         // 按钮标签
