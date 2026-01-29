@@ -18,7 +18,7 @@ const translations = {
         statElapsedTimeLabel: '處理耗時',
         statAvgTimeLabel: '平均檔案耗時',
         statThroughputLabel: '吞吐量',
-        footerText: '✨ XLS合併工具 v20260107 | Adam @仁寶電腦 伺服器 #55095',
+        footerText: '✨ XLS合併工具 v20260129 | Adam @仁寶電腦 伺服器 #55095',
         pathEmpty: '未選擇任何檔案',
 
         // 按钮标签
@@ -62,7 +62,7 @@ const translations = {
         statElapsedTimeLabel: 'Processing Time',
         statAvgTimeLabel: 'Avg File Time',
         statThroughputLabel: 'Throughput',
-        footerText: '✨ XLS Consolidator v20260107 | Adam @Compal Server #55095',
+        footerText: '✨ XLS Consolidator v20260129 | Adam @Compal Server #55095',
         pathEmpty: 'No files selected',
 
         // 按钮标签

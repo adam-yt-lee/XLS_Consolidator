@@ -703,6 +703,16 @@
             event.target.classList.add('active');
         }
 
+        /**
+         * 清除所有輸入類型按鈕的選取狀態
+         * Clear active state from all input type buttons
+         */
+        function clearInputTypeSelection() {
+            document.querySelectorAll('.btn-option').forEach(btn => {
+                btn.classList.remove('active');
+            });
+        }
+
         // ========================================
         // 路徑顯示相關函數 (Path Display Functions)
         // ========================================
@@ -792,6 +802,7 @@
                 `${translations[currentLanguage].filesSelectedMsg} ${selectedFiles.length} ${translations[currentLanguage].filesSelectedCount}`,
                 'success'
             );
+            clearInputTypeSelection();
         });
 
         /**
@@ -809,6 +820,7 @@
                 `${translations[currentLanguage].filesSelectedMsg} ${files.length} ${translations[currentLanguage].filesSelectedCount}`,
                 'success'
             );
+            clearInputTypeSelection();
         });
 
         /**
@@ -841,6 +853,7 @@
                 showMessage(`${translations[currentLanguage].zipParseFailed}${error.message}`, 'error');
                 console.error('ZIP processing error:', error);
             }
+            clearInputTypeSelection();
         });
 
         // ========================================
