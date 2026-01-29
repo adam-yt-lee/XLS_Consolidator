@@ -48,19 +48,16 @@
                 <div class="form-group">
                     <label id="typeLabel"></label>
                     <div class="btn-option-group">
-                        <button class="btn-option active" onclick="selectInputType('file')" id="optFile"></button>
+                        <button class="btn-option" onclick="selectInputType('file')" id="optFile"></button>
                         <button class="btn-option" onclick="selectInputType('folder')" id="optFolder"></button>
                         <button class="btn-option" onclick="selectInputType('zip')" id="optZip"></button>
                     </div>
                 </div>
                 
-                <div class="form-group">
-                    <label id="selectLabel"></label>
-                    <input type="file" id="xlsFileInput" accept=".xls" style="display:none;">
-                    <input type="file" id="xlsFolderInput" accept=".xls" webkitdirectory directory multiple style="display:none;">
-                    <input type="file" id="zipInput" accept=".zip" style="display:none;">
-                    <button class="btn-primary" onclick="selectInput()" id="selectBtn"></button>
-                </div>
+                <!-- Hidden file inputs -->
+                <input type="file" id="xlsFileInput" accept=".xls" style="display:none;">
+                <input type="file" id="xlsFolderInput" accept=".xls" webkitdirectory directory multiple style="display:none;">
+                <input type="file" id="zipInput" accept=".zip" style="display:none;">
                 
                 <div class="button-group">
                     <button class="btn-secondary" onclick="processData()" id="processBtn"></button>
@@ -192,7 +189,7 @@
         // 全域變數 (Global Variables)
         // ##################################################################################################################################################
 
-        let selectedInputType = 'file';    // 當前選擇的輸入類型：'file' | 'folder' | 'zip'
+        let selectedInputType = null;       // 當前選擇的輸入類型：'file' | 'folder' | 'zip' (預設無選取)
         let selectedFiles = [];             // 已選擇的檔案列表
         let allConsolidatedData = [];       // 所有合併後的資料
         
@@ -656,7 +653,6 @@
             // 更新輸入區塊
             document.getElementById('inputTitle').textContent = trans.inputTitle;
             document.getElementById('typeLabel').textContent = trans.typeLabel;
-            document.getElementById('selectLabel').textContent = trans.selectLabel;
             document.getElementById('processBtn').textContent = trans.processBtn;
 
             // 更新選項按鈕
@@ -675,9 +671,6 @@
             // 更新頁尾
             document.getElementById('footerText').textContent = trans.footerText;
 
-            // 更新選擇按鈕文字
-            updateSelectButtonText();
-
             // 更新路徑顯示（語言切換時也要更新）
             updatePathDisplay(selectedFiles);
         }
@@ -687,25 +680,8 @@
         // ========================================
 
         /**
-         * 更新選擇按鈕的文字
-         * Update select button text based on input type
-         */
-        function updateSelectButtonText() {
-            const trans = translations[currentLanguage];
-            const btn = document.getElementById('selectBtn');
-
-            if (selectedInputType === 'file') {
-                btn.textContent = trans.selectBtnFile;
-            } else if (selectedInputType === 'folder') {
-                btn.textContent = trans.selectBtnFolder;
-            } else if (selectedInputType === 'zip') {
-                btn.textContent = trans.selectBtnZip;
-            }
-        }
-
-        /**
-         * 選擇輸入類型（檔案/資料夾/ZIP）
-         * Select input type (file/folder/zip)
+         * 選擇輸入類型並直接觸發檔案選擇對話框
+         * Select input type and directly trigger file selection dialog
          *
          * @param {string} type - 輸入類型: 'file', 'folder', 或 'zip'
          */
@@ -718,20 +694,12 @@
             });
             event.target.classList.add('active');
 
-            // 更新選擇按鈕文字
-            updateSelectButtonText();
-        }
-
-        /**
-         * 觸發檔案選擇對話框
-         * Trigger file selection dialog based on input type
-         */
-        function selectInput() {
-            if (selectedInputType === 'file') {
+            // 直接觸發對應的檔案選擇對話框
+            if (type === 'file') {
                 document.getElementById('xlsFileInput').click();
-            } else if (selectedInputType === 'folder') {
+            } else if (type === 'folder') {
                 document.getElementById('xlsFolderInput').click();
-            } else if (selectedInputType === 'zip') {
+            } else if (type === 'zip') {
                 document.getElementById('zipInput').click();
             }
         }
